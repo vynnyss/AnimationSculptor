@@ -237,7 +237,8 @@ def cmd_fetch_blender(_args) -> None:
     if IS_WINDOWS:
         sys.exit("[dev] fetch-blender is for Linux CI")
     base = f"https://download.blender.org/release/Blender{BLENDER_SERIES}/"
-    listing = urllib.request.urlopen(base, timeout=60).read().decode()
+    headers = {"User-Agent": "Mozilla/5.0 (animation-sculptor CI)"}
+    listing = urllib.request.urlopen(urllib.request.Request(base, headers=headers), timeout=60).read().decode()
     patches = sorted({int(m) for m in re.findall(rf"blender-{re.escape(BLENDER_SERIES)}\.(\d+)-linux-x64\.tar\.xz", listing)})
     if not patches:
         sys.exit(f"[dev] no Linux build found at {base}")
@@ -248,10 +249,13 @@ def cmd_fetch_blender(_args) -> None:
         dest.mkdir(exist_ok=True)
         archive = dest / f"{name}.tar.xz"
         log(f"downloading {base}{name}.tar.xz")
-        urllib.request.urlretrieve(base + archive.name, archive)
+        with urllib.request.urlopen(urllib.request.Request(base + archive.name, headers=headers), timeout=600) as resp, open(archive, "wb") as out:
+            shutil.copyfileobj(resp, out)
         with tarfile.open(archive) as tar:
             tar.extractall(dest, filter="data")
         archive.unlink()
+    if not exe.exists():
+        sys.exit(f"[dev] download finished but {exe} is missing")
     print(exe)
 
 
