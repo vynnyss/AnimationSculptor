@@ -16,6 +16,7 @@
 ```toml
 blender = 'D:\Programas\Blender 5.2\blender.exe'
 godot   = 'C:\Tools\Godot\Godot_v4.7.2-stable_win64.exe'
+character = 'D:\Projetos\Vale_Rig_Animations.blend'   # personagem de teste local (ou $ASC_TEST_CHARACTER)
 ```
 
 `dev.py` confere que a versão encontrada é 5.2 antes de qualquer ação.
@@ -40,7 +41,7 @@ Pergunta ao próprio Blender onde fica o repositório de extensões `user_defaul
 | `validate` | regras estáticas (`scripts/checks.py`) + `blender --command extension validate` | ✅ |
 | `fetch-blender` | (CI Linux) baixa o Blender 5.2.x mais recente para `.blender/` | ✅ |
 | `test godot` | e2e export + import headless | Escopo 2 |
-| `assets [nome]` | roda `make_test_assets.py` no Blender | próximo PR |
+| `assets [--preview]` | gera `tests/assets/local/attack_test.blend` a partir do personagem configurado ([assets](../testing/regression-assets.md)) | ✅ |
 
 ## Regras estáticas (`scripts/checks.py`)
 

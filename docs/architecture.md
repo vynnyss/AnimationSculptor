@@ -149,7 +149,7 @@ AnimationSculptor/
 ├── scripts/
 │   ├── dev.py                     # link | test | build | validate | fetch-blender
 │   ├── checks.py                  # regras estáticas (core sem bpy, nomes de bones, manifest, links)-docs
-│   └── make_test_assets.py        # gera rigify_humanoid.blend / attack_test.blend
+│   └── make_test_assets.py        # gera tests/assets/local/attack_test.blend a partir do personagem local
 ├── godot/
 │   └── import_test/               # projeto Godot mínimo + script headless de validação
 ├── docs/

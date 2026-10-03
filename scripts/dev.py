@@ -10,9 +10,14 @@ Commands:
   build                build the extension zip into dist/
   validate             static checks (+ `blender --command extension validate` when Blender is available)
   fetch-blender        (CI, Linux) download the latest Blender 5.2.x into .blender/ and print its path
+  assets [--preview]   generate tests/assets/local/attack_test.blend from your Rigify character
+                       (optionally render the key poses to tests/assets/local/preview/)
 
 Blender is located from (in order): $BLENDER_EXE, scripts/.dev.toml (`blender = '...'`),
 the default Windows install path, `blender` on PATH.
+
+The test character (never committed: the repository is public) is located from $ASC_TEST_CHARACTER,
+then scripts/.dev.toml (`character = '...'`). Tests that need generated assets skip when they are missing.
 
 Structure adapted from j10er/BlenderAddonTemplate (GPL-3.0): see docs/reference/open-source-provenance.md.
 """
@@ -40,6 +45,8 @@ BLENDER_SERIES = "5.2"
 TEST_PROFILE = ROOT / ".blender_test_profile"
 PYDEPS = TEST_PROFILE / "pydeps"
 DIST = ROOT / "dist"
+LOCAL_ASSETS = ROOT / "tests" / "assets" / "local"
+ATTACK_ASSET = LOCAL_ASSETS / "attack_test.blend"
 IS_WINDOWS = os.name == "nt"
 
 
@@ -71,6 +78,13 @@ def find_blender(required: bool = True) -> str | None:
             "[dev] Blender 5.2 not found. Set BLENDER_EXE or create scripts/.dev.toml with:\n"
             "      blender = 'C:\\Program Files\\Blender Foundation\\Blender 5.2\\blender.exe'"
         )
+    return None
+
+
+def find_character() -> str | None:
+    for candidate in (os.environ.get("ASC_TEST_CHARACTER"), _config().get("character")):
+        if candidate and Path(candidate).exists():
+            return str(Path(candidate).resolve())
     return None
 
 
@@ -183,6 +197,10 @@ def test_blender(extra: list[str]) -> int:
     env["ASC_PYDEPS"] = str(PYDEPS)
     env["ASC_ADDON_MODULE"] = ADDON_MODULE
     env["ASC_REPO_ROOT"] = str(ROOT)
+    env["ASC_TEST_ASSET"] = str(ATTACK_ASSET)
+    character = find_character()
+    if character:
+        env["ASC_TEST_CHARACTER"] = character
     TEST_PROFILE.mkdir(exist_ok=True)
     check_blender_version(blender, env)
     _ensure_pydeps()
@@ -233,6 +251,26 @@ def cmd_validate(_args) -> None:
     sys.exit(code)
 
 
+def cmd_assets(args) -> None:
+    blender = find_blender()
+    check_blender_version(blender)
+    character = find_character()
+    if not character:
+        sys.exit(
+            "[dev] test character not found. Set ASC_TEST_CHARACTER or add to scripts/.dev.toml:\n"
+            "      character = 'D:\\path\\to\\character.blend'"
+        )
+    if Path(character).resolve() == ATTACK_ASSET.resolve():
+        sys.exit("[dev] the character and the generated asset must be different files")
+    cmd = [
+        blender, "--background", character, "--factory-startup", "--python-exit-code", "1",
+        "--python", str(ROOT / "scripts" / "make_test_assets.py"), "--", "--output", str(ATTACK_ASSET),
+    ]
+    if args.preview:
+        cmd += ["--preview", str(LOCAL_ASSETS / "preview")]
+    sys.exit(_run(cmd))
+
+
 def cmd_fetch_blender(_args) -> None:
     if IS_WINDOWS:
         sys.exit("[dev] fetch-blender is for Linux CI")
@@ -271,6 +309,9 @@ def main() -> None:
     sub.add_parser("build").set_defaults(func=cmd_build)
     sub.add_parser("validate").set_defaults(func=cmd_validate)
     sub.add_parser("fetch-blender").set_defaults(func=cmd_fetch_blender)
+    p_assets = sub.add_parser("assets")
+    p_assets.add_argument("--preview", action="store_true", help="also render the key poses to PNG")
+    p_assets.set_defaults(func=cmd_assets)
     args = parser.parse_args()
     args.func(args)
 
