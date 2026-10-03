@@ -1,0 +1,28 @@
+schema_version = "1.0.0"
+
+id = "animation_sculptor"
+version = "0.1.0"
+name = "Animation Sculptor"
+tagline = "Sculpt character motion trails directly in the 3D viewport"
+maintainer = "vynnyss"
+type = "add-on"
+website = "https://github.com/vynnyss/AnimationSculptor"
+
+tags = ["Animation", "3D View", "Rigging"]
+
+blender_version_min = "5.2.0"
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+
+copyright = [
+  "2026 vynnyss",
+]
+
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "/.git/",
+  "/*.zip",
+]

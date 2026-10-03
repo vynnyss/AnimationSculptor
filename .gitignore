@@ -8,3 +8,5 @@ scripts/.dev.toml
 .vscode/
 .idea/
 .godot/
+.blender/
+.pytest_cache/

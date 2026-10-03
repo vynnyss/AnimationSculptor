@@ -4,7 +4,7 @@
 
 ## Estado
 
-Nenhum código copiado ainda (fase de planejamento). A tabela abaixo é o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
+Nenhum código de terceiros copiado ainda. `scripts/dev.py` segue a *estrutura* do BlenderAddonTemplate (subcomandos build/test, pytest dentro do Blender), com código escrito do zero. A tabela abaixo é o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
 
 | Componente | Projeto origem | Arquivo origem (commit) | Licença | Estratégia | Destino | Status |
 |---|---|---|---|---|---|---|
@@ -21,7 +21,7 @@ Nenhum código copiado ainda (fase de planejamento). A tabela abaixo é o **plan
 | Avaliação Bézier de F-Curve | Blender | `BKE_fcurve` / `fcurve.cc` (5.2) | GPL-2+ | algoritmo portado | `core/bezier.py` | planejado |
 | Solver tangent-space + pins | Interactive Motion Path | `pose_anim_motion_curve.cc`: `MCSolver::solve`, `my_quadprog` (`4b5a6e7`) | GPL-2+ | algoritmo portado (Escopo 4) | `core/solve.py` | planejado |
 | Gaussian/Butterworth smooth | Blender | operadores `graph.gaussian_smooth`, `graph.butterworth_smooth` (5.2) | GPL-2+ | algoritmo portado (Escopo 2) | `core/timing_ops.py` | planejado |
-| Estrutura dev/test | BlenderAddonTemplate | `dev.py`, `run_tests.py` (`2b91ae1`) | GPL-3 | adaptado | `scripts/dev.py` | planejado |
+| Estrutura dev/test | BlenderAddonTemplate | `dev.py`, `run_tests.py` (`2b91ae1`) | GPL-3 | estrutura adaptada, código próprio | `scripts/dev.py`, `tests/blender/run.py` | no repo (esqueleto) |
 
 ## Regras de marcação no código
 

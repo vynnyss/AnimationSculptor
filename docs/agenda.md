@@ -4,7 +4,7 @@
 
 ## Agora — início do Escopo 1
 
-1. **Esqueleto do repositório** (PR próprio): `LICENSE` GPL-3, `README.md`, `.gitignore`, `animation_sculptor/` com manifest, `scripts/dev.py` (`link`, `test`, `build`, `validate`), `tests/unit` + `tests/blender` rodando um teste trivial dentro do Blender 5.2 da máquina. *Resultado: extensão vazia instala e os dois tipos de teste rodam com um comando.*
+1. **[em revisão — PR `feat/repo-skeleton`] Esqueleto do repositório**: `LICENSE` GPL-3, `README.md`, `.gitignore`, `animation_sculptor/` com manifest, `scripts/dev.py` (`link`, `test`, `build`, `validate`), `tests/unit` + `tests/blender` rodando um teste trivial dentro do Blender 5.2 da máquina. *Resultado: extensão vazia instala e os dois tipos de teste rodam com um comando.*
 2. **Assets de teste reproduzíveis**: `scripts/make_test_assets.py` gera `rigify_humanoid.blend` (metarig Human → generate, mesh simples) e `attack_test.blend` (key poses de ataque pré-definidas). *Resultado: testes não dependem de arquivo do usuário.*
 3. **Vendorizar LMP** com patches P1–P5 + `trails/provider.py`; trails aparecendo nos controles do rig de teste a partir do painel do Animation Sculptor. *Resultado: visualização funcionando dentro do nosso addon.*
 4. **Spike de interação** (ADR 0010): tool + gizmo hover + modal drag + 1 undo por gesto no rig de teste. *Resultado: decisão confirmada ou fallback registrado.*
@@ -26,6 +26,8 @@
 - Escopo 4: FK sculpt com quaternions, trails IK/FK, snapping Rigify.
 
 ## Investigação
+
+- Job `blender` do CI: confirmar que baixa o 5.2 e passa; então remover `continue-on-error`.
 
 - Confirmar no Blender 5.2 real os itens de [development/blender-5.2-notes.md](development/blender-5.2-notes.md) (assinaturas de channelbag, nomes de opções glTF, gizmo Python `test_select`, `Window.modal_operators`).
 - Política de spacing `PRESERVE_PATH` vs `PRESERVE_SMOOTHNESS` — decidir com o usuário testando o protótipo; registrar ADR.

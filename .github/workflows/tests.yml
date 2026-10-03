@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest numpy
+      - run: python scripts/dev.py test unit
+      - run: python scripts/checks.py
+
+  blender:
+    runs-on: ubuntu-latest
+    # Download URL/headless behaviour of Blender 5.2 on CI not yet confirmed green;
+    # remove continue-on-error once this job has passed once (see docs/agenda.md).
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest
+      - name: Install Blender runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6
+      - uses: actions/cache@v4
+        with:
+          path: .blender
+          key: blender-5.2-${{ runner.os }}
+      - name: Fetch Blender 5.2
+        run: echo "BLENDER_EXE=$(python scripts/dev.py fetch-blender | tail -n 1)" >> "$GITHUB_ENV"
+      - run: python scripts/dev.py test blender
+      - run: python scripts/dev.py validate

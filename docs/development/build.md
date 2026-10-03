@@ -11,24 +11,9 @@ blender --command extension validate dist/<id>-<versão>.zip
 
 Encapsulado em `python scripts/dev.py build`.
 
-## Manifest (esboço)
+## Manifest
 
-```toml
-schema_version = "1.0.0"
-id = "animation_sculptor"
-version = "0.1.0"
-name = "Animation Sculptor"
-tagline = "Sculpt character motion trails directly in the viewport"
-maintainer = "<autor>"
-type = "add-on"
-tags = ["Animation", "3D View", "Rigging"]
-blender_version_min = "5.2.0"
-license = ["SPDX:GPL-3.0-or-later"]
-copyright = ["2026 <autor>", "2026 Experience Elysian (Live Motion Path)", "Bart Crouch (Motion Trail)", "Wayde Brandon Moss (Motiontrail3D)"]
-
-[build]
-paths_exclude_pattern = ["__pycache__/", "/.git/", "*.zip", "/tests/"]
-```
+Arquivo real: [`animation_sculptor/blender_manifest.toml`](../../animation_sculptor/blender_manifest.toml). Ao vendorizar código de terceiros, acrescentar os autores em `copyright` (Experience Elysian — Live Motion Path; Bart Crouch — Motion Trail; Wayde Brandon Moss — Motiontrail3D) e em `THIRD_PARTY_NOTICES.md`.
 
 Sem `permissions` (não acessamos rede/arquivos fora do `.blend`, exceto export iniciado pelo usuário — confirmar se o export precisa de `files`).
 

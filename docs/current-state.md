@@ -2,15 +2,18 @@
 
 > Leia primeiro. Responde "onde estamos" para qualquer sessão/agente nova. Atualizar ao final de cada sessão significativa.
 
-**Última atualização:** 2026-10-03 — planejamento inicial + decisões de nome/ID/Godot + fluxo de PR.
+**Última atualização:** 2026-10-03 — esqueleto do repositório (PR `feat/repo-skeleton`).
 
 ## Resumo
 
-Fase de **planejamento concluída**; **nenhum código** existe. Repositório: `vynnyss/AnimationSculptor`. `main` contém só o commit inicial; o planejamento (`docs/`, `README.md`, `CLAUDE.md`) está no PR `docs/planning` aguardando revisão do mantenedor.
+Planejamento mergeado na `main` (PR #1). Em revisão: **esqueleto do repositório** — extensão vazia instalável, `scripts/dev.py`, testes unitários e de Blender, CI. Nenhuma funcionalidade de animação ainda.
 
 ## O que funciona hoje
 
-Nada executável.
+- Extensão `animation_sculptor` 0.1.0 (Blender 5.2): registra preferências e um painel informativo em 3D Viewport › N › Animation Sculptor.
+- `scripts/dev.py`: `link`/`unlink`, `test unit|blender|all`, `build`, `validate`, `fetch-blender`.
+- `scripts/checks.py`: regras estáticas (core sem bpy, nomes de bones só em `rig/`, manifest, links da documentação).
+- CI no GitHub: job `unit` e job `blender` (este ainda `continue-on-error`).
 
 ## Parcialmente implementado
 
@@ -18,7 +21,7 @@ Nada.
 
 ## Quebrado
 
-Nada.
+Nada conhecido.
 
 ## Limitações conhecidas (do plano)
 
@@ -28,16 +31,16 @@ Nada.
 
 ## Última implementação realizada
 
-Planejamento: análise de LMP, Motion Trail, Motiontrail3D (o repo "Editable Motion Trails" é port dele, não do Motion Trail), Interactive Motion Path, BlenderAddonTemplate, GameRig, Rigodotify e addons comerciais; arquitetura, roadmap, ADRs 0001–0010, estratégia de testes.
+Esqueleto do repositório: pacote `animation_sculptor/` (manifest, `__init__` sem `bpy` no topo, `core/`, `ui/prefs.py`, `ui/panels.py`, `THIRD_PARTY_NOTICES.md`), `scripts/dev.py`, `scripts/checks.py`, `tests/unit`, `tests/blender` (runner + smoke), `pyproject.toml`, `.github/workflows/tests.yml`. Antes disso: planejamento completo (PR #1).
 
 ## Testes
 
-| Suite | Passa | Falha |
-|---|---|---|
-| unit | — | — |
-| blender | — | — |
-| manual | — | — |
-| godot | — | — |
+| Suite | Passa | Falha | Observação |
+|---|---|---|---|
+| unit | 8 | 0 | executados no ambiente do agente com executor mínimo (sem PyPI); pytest real roda no CI e na máquina do mantenedor |
+| blender | ? | ? | 5 testes de smoke escritos; **ainda não executados** (sem Blender no ambiente do agente) — rodar `python scripts/dev.py test blender` |
+| manual | — | — | M0 (instalação) aplicável a partir deste PR |
+| godot | — | — | Escopo 2 |
 
 ## Ambiente conhecido
 
@@ -48,4 +51,4 @@ Planejamento: análise de LMP, Motion Trail, Motiontrail3D (o repo "Editable Mot
 
 ## Próximo objetivo
 
-Merge do PR de planejamento pelo mantenedor → Agenda › **Agora**: esqueleto do repo (PR próprio) + `dev.py` + testes rodando no Blender 5.2 → assets de teste → vendorizar LMP → spike de interação.
+Merge do esqueleto (após `python scripts/dev.py test all` passar na máquina do mantenedor) → Agenda › **Agora**: assets de teste reproduzíveis → vendorizar LMP → spike de interação.
