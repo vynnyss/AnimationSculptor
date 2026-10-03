@@ -9,11 +9,14 @@ python scripts/dev.py test blender -k spaces  # filtro pytest
 
 Fluxo (adaptado do BlenderAddonTemplate):
 
-1. `dev.py` localiza o Blender 5.2 (`BLENDER_EXE` ou config local `scripts/.dev.toml`, não versionado).
-2. Garante `pytest` no Python do Blender (`<blender>/5.2/python/bin/python -m pip install pytest`), uma vez.
-3. Instala a extensão do working tree num diretório de usuário **isolado** (`BLENDER_USER_RESOURCES` apontando para `./.blender_test_profile/`) — nunca no perfil real do usuário.
-4. Roda `blender --background --factory-startup --python-exit-code 1 --python tests/blender/run.py -- <args pytest>`.
-5. Cada teste abre um asset de `tests/assets/` com `bpy.ops.wm.open_mainfile` (fixture) — estado limpo por teste.
+1. `dev.py` localiza o Blender e confere que é 5.2 ([setup](../development/setup.md#configuração-local)).
+2. Perfil **isolado**: `BLENDER_USER_RESOURCES=./.blender_test_profile/` — nunca toca no perfil real do usuário.
+3. Instala `pytest` (puro Python) em `.blender_test_profile/pydeps` com o **Python do sistema** (`pip install --target`), uma vez. Não escreve na instalação do Blender (que no Windows fica em Program Files, sem permissão).
+4. Cria junction/symlink do working tree em `<perfil>/extensions/user_default/animation_sculptor` — sem build/zip, código atual sempre.
+5. Roda `blender --background --factory-startup --python-exit-code 1 --python tests/blender/run.py -- <args pytest>`; o `run.py` habilita `bl_ext.user_default.animation_sculptor` (falha se o registro der erro) e chama `pytest.main`.
+6. (A partir dos assets) cada teste abre um `.blend` de `tests/assets/` com `bpy.ops.wm.open_mainfile` — estado limpo por teste.
+
+Testes existentes: `tests/blender/test_smoke.py` (versão 5.2, extensão habilitada, painel e preferências registrados, ciclo disable/enable, `core` importável a partir da extensão instalada).
 
 ## Fixtures planejadas (`tests/blender/conftest.py`)
 

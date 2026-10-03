@@ -1,6 +1,6 @@
 # Arquitetura
 
-> Estado: **planejada** (nenhum código ainda). Atualize este documento quando a implementação divergir — o código vence, a doc é corrigida.
+> Estado: **esqueleto** — existem `animation_sculptor/` (manifest, `__init__`, `core/` vazio, `ui/prefs.py`, `ui/panels.py`), `scripts/dev.py`, `scripts/checks.py`, `tests/unit`, `tests/blender`, CI. Os demais módulos abaixo são planejados. Atualize este documento quando a implementação divergir — o código vence, a doc é corrigida.
 
 ## Visão geral
 
@@ -147,11 +147,14 @@ AnimationSculptor/
 │   ├── assets/                    # .blend de regressão (gerados por script)
 │   └── conftest.py
 ├── scripts/
-│   ├── dev.py                     # link | test | build | validate-docs
+│   ├── dev.py                     # link | test | build | validate | fetch-blender
+│   ├── checks.py                  # regras estáticas (core sem bpy, nomes de bones, manifest, links)-docs
 │   └── make_test_assets.py        # gera rigify_humanoid.blend / attack_test.blend
 ├── godot/
 │   └── import_test/               # projeto Godot mínimo + script headless de validação
 ├── docs/
+├── .github/workflows/tests.yml    # CI: unit + blender
+├── pyproject.toml                 # config do pytest (unit)
 ├── CLAUDE.md                      # regras para agentes (aponta para docs/)
 ├── README.md
 └── LICENSE                        # GPL-3.0-or-later

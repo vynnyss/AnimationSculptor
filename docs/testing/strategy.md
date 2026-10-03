@@ -45,4 +45,8 @@ Desde a Iteração 1, sem otimizar prematuramente:
 
 ## CI
 
-GitHub Actions (quando houver remoto): unit em todo push; Blender 5.2 Linux baixado e cacheado (padrão BlenderAddonTemplate) para integração. Godot headless opcional no CI. Antes do remoto existir, tudo roda local via `dev.py`.
+GitHub Actions (`.github/workflows/tests.yml`), em todo PR para `main`:
+
+- **unit** (obrigatório): Python 3.13, `dev.py test unit` + `scripts/checks.py`.
+- **blender**: baixa o Blender 5.2.x mais recente (`dev.py fetch-blender`, cacheado) e roda `dev.py test blender` + `validate`. Obrigatório (confirmado verde em 2026-10-03). Se falhar, o final da saída vira anotação de erro do check (`scripts/ci_annotate.py`).
+- Godot headless entra no Escopo 2.

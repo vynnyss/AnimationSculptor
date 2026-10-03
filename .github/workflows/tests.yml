@@ -1,0 +1,53 @@
+name: tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest numpy
+      - run: python scripts/dev.py test unit
+      - run: python scripts/checks.py
+
+  blender:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install pytest
+      - name: Install Blender runtime libraries
+        run: sudo apt-get update && sudo apt-get install -y libxi6 libxkbcommon0 libxxf86vm1 libxfixes3 libxrender1 libgl1 libegl1 libsm6
+      - uses: actions/cache@v4
+        with:
+          path: .blender
+          key: blender-5.2-${{ runner.os }}
+      - name: Fetch Blender 5.2
+        run: |
+          set -eo pipefail
+          python scripts/dev.py fetch-blender 2>&1 | tee fetch.log
+          exe="$(tail -n 1 fetch.log)"
+          test -x "$exe"
+          echo "BLENDER_EXE=$exe" >> "$GITHUB_ENV"
+      - name: Report fetch output
+        if: failure()
+        run: python scripts/ci_annotate.py fetch.log
+      - name: Blender tests
+        run: |
+          set -o pipefail
+          python scripts/dev.py test blender 2>&1 | tee blender-tests.log
+      - name: Report Blender test output
+        if: failure()
+        run: python scripts/ci_annotate.py blender-tests.log
+      - run: python scripts/dev.py validate
