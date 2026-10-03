@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+dist/
+*.zip
+.blender_test_profile/
+scripts/.dev.toml
+*.blend1
+.vscode/
+.idea/
+.godot/
