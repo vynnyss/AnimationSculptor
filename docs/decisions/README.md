@@ -15,7 +15,7 @@ ADRs leves inspirados em [MADR](https://github.com/adr/madr). Um arquivo por dec
 | [0007](0007-gpl-and-reuse-policy.md) | GPL-3.0-or-later e política de reutilização | aceito |
 | [0008](0008-pure-python-core.md) | Core puro (numpy, sem bpy) separado da integração | aceito |
 | [0009](0009-export-native-bake-gltf.md) | Export via bake/amostragem nativa + glTF; sem conversor de esqueleto | aceito |
-| [0010](0010-tool-gizmo-modal-interaction.md) | Interação: WorkSpaceTool + Gizmo (hover) + modal (gesto) | aceito, validar com spike |
+| [0010](0010-tool-gizmo-modal-interaction.md) | Interação: WorkSpaceTool + Gizmo (hover) + modal (gesto) | aceito — validado pelo spike (2026-10-03) |
 
 ## Modelo
 

@@ -1,0 +1,105 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Gesture operator, parametric form (``execute``): same edit as a mouse drag, testable in background."""
+
+import importlib
+
+import bpy
+import pytest
+from mathutils import Vector
+
+
+def _head(rig, bone, frame):
+    bpy.context.scene.frame_set(frame)
+    return (rig.matrix_world @ rig.pose.bones[bone].head).copy()
+
+
+def _channelbag(rig):
+    return rig.animation_data.action.layers[0].strips[0].channelbags[0]
+
+
+def _keys(rig):
+    return {(fc.data_path, fc.array_index): [tuple(kp.co) for kp in fc.keyframe_points] for fc in _channelbag(rig).fcurves}
+
+
+def _grab(rig, bone, frame, delta):
+    return bpy.ops.asc.sculpt_gesture('EXEC_DEFAULT', obj_name=rig.name, bone=bone, frame=frame, delta=delta)
+
+
+def test_registered():
+    assert hasattr(bpy.ops.asc, "sculpt_gesture")
+    assert "ASC_GGT_trails" in {c.bl_idname for c in bpy.types.GizmoGroup.__subclasses__()}
+    assert "ASC_GT_trail_points" in {c.bl_idname for c in bpy.types.Gizmo.__subclasses__()}
+
+
+@pytest.mark.parametrize("bone,frame", [("hand_ik.L", 12), ("foot_ik.R", 24), ("torso", 12)])
+def test_grab_moves_control_by_world_delta(public_rig, bone, frame):
+    """Acceptance criterion 4: the control lands where the drag says (error < 1 mm)."""
+    delta = Vector((0.12, -0.05, 0.08))
+    before = _head(public_rig, bone, frame)
+    keys_before = _keys(public_rig)
+    assert _grab(public_rig, bone, frame, delta) == {'FINISHED'}
+    after = _head(public_rig, bone, frame)
+    assert (after - before - delta).length < 1e-4
+    keys_after = _keys(public_rig)
+    assert keys_after.keys() == keys_before.keys()
+    for channel, keys in keys_before.items():
+        assert [k[0] for k in keys_after[channel]] == [k[0] for k in keys]  # no new keys, timing intact
+
+
+def test_grab_only_touches_the_key_at_the_frame(public_rig):
+    other = _head(public_rig, "hand_ik.L", 24)
+    _grab(public_rig, "hand_ik.L", 12, (0.1, 0.1, 0.1))
+    assert (_head(public_rig, "hand_ik.L", 24) - other).length < 1e-6
+
+
+def test_zero_delta_is_identity(public_rig):
+    """Invariant 1: grab with zero delta changes nothing."""
+    keys = _keys(public_rig)
+    _grab(public_rig, "hand_ik.L", 12, (0.0, 0.0, 0.0))
+    assert _keys(public_rig) == keys
+
+
+def test_locked_axis_stays(public_rig):
+    pb = public_rig.pose.bones["hand_ik.L"]
+    pb.lock_location[2] = True
+    fc_z = _channelbag(public_rig).fcurves.find(pb.path_from_id("location"), index=2)
+    local_z = fc_z.evaluate(12)
+    _grab(public_rig, "hand_ik.L", 12, (0.05, 0.05, 0.2))
+    assert fc_z.evaluate(12) == pytest.approx(local_z)
+
+
+def test_refuses_driver(public_rig):
+    public_rig.pose.bones["hand_ik.L"].driver_add("location", 0)
+    keys = _keys(public_rig)
+    assert _grab(public_rig, "hand_ik.L", 12, (0.1, 0, 0)) == {'CANCELLED'}
+    assert _keys(public_rig) == keys
+
+
+def test_refuses_active_nla(public_rig):
+    adt = public_rig.animation_data
+    track = adt.nla_tracks.new()
+    track.strips.new("strip", 1, adt.action)
+    assert _grab(public_rig, "hand_ik.L", 12, (0.1, 0, 0)) == {'CANCELLED'}
+
+
+def test_refuses_frame_without_key(public_rig):
+    assert _grab(public_rig, "hand_ik.L", 6, (0.1, 0, 0)) == {'CANCELLED'}
+
+
+def test_trails_resumed_after_gesture(public_rig, addon):
+    provider = importlib.import_module(addon.__name__ + ".trails.provider")
+    _grab(public_rig, "hand_ik.L", 12, (0.1, 0, 0))
+    assert not provider.is_suspended()
+
+
+@pytest.mark.parametrize("bone", ["hand_ik.L", "foot_ik.R", "torso", "upper_arm_fk.R"])
+@pytest.mark.parametrize("frame", [1, 7, 12])
+def test_location_space_maps_location_to_head(public_rig, addon, bone, frame):
+    """anim.spaces.location_space: head_world = P @ location, including Rigify IK controls
+    (use_local_location off), where M_arm @ M_pose @ inverse(M_basis) is wrong."""
+    spaces = importlib.import_module(addon.__name__ + ".anim.spaces")
+    bpy.context.scene.frame_set(frame)
+    pb = public_rig.pose.bones[bone]
+    p = spaces.location_space(public_rig, pb)
+    head = public_rig.matrix_world @ pb.head
+    assert (p @ pb.location - head).length < 1e-5

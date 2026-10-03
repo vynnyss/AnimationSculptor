@@ -1,15 +1,16 @@
 # Estratégia de testes
 
-> Quatro camadas. Unit tests sozinhos não bastam: o que importa é a ferramenta funcionando dentro do Blender e a animação chegando no Godot.
+> Cinco camadas. Unit tests sozinhos não bastam: o que importa é a ferramenta funcionando dentro do Blender e a animação chegando no Godot.
 
 | Camada | Onde roda | O que cobre | Comando (planejado) | Quando |
 |---|---|---|---|---|
 | **Unit** | Python comum + numpy + pytest | `core/`: Bézier (paridade), falloff, grab/arc/retime/spacing, solve, rig mapping (com dados fake), serialização de estado | `python scripts/dev.py test unit` | todo commit; segundos |
 | **Integração Blender** | `blender --background` + pytest dentro do Blender | Actions/slots/channelbags, F-Curves, `P(f)`, avaliação de pose, adapter Rigify em rig gerado, trails (engine STEP), operadores (via `bpy.ops` com override), undo, save/reload | `python scripts/dev.py test blender` | todo commit que toca `anim/ rig/ trails/ interaction/ pipeline/` |
+| **UI (eventos simulados)** | Blender **com janela** + `Window.event_simulate` (`--enable-event-simulate`) | Interação real: hover do gizmo, press/drag/release, undo/redo, Esc, Ctrl+LMB, métricas de custo por mouse move | `python scripts/dev.py test ui` | local, ao tocar `interaction/`; **não roda no CI** (precisa de display) |
 | **Manual (workflow)** | Blender 5.2 com UI, humano | Usabilidade real: fazer uma animação | checklist em [manual-tests.md](manual-tests.md) | fim de cada escopo e antes de entregar build |
 | **Ponta a ponta Godot** | Blender background + Godot headless | Export + import + posições conferidas | `python scripts/dev.py test godot` | Escopo 2 em diante |
 
-Detalhes: [blender-tests.md](blender-tests.md), [godot-export-test.md](godot-export-test.md), assets em [regression-assets.md](regression-assets.md).
+Detalhes: [blender-tests.md](blender-tests.md) (inclui os testes de UI), [godot-export-test.md](godot-export-test.md), assets em [regression-assets.md](regression-assets.md).
 
 ## Princípios
 
@@ -31,8 +32,9 @@ Detalhes: [blender-tests.md](blender-tests.md), [godot-export-test.md](godot-exp
 | Serialização/estado | ✔ | ✔ (save/reload, undo) | ✔ |
 | Pose evaluation / `P(f)` | | ✔ | |
 | Motion paths (engine) | | ✔ (STEP) | ✔ |
-| Operators / modal | | ✔ (invoke/execute) | ✔ |
-| UX (hover, feedback) | | | ✔ |
+| Operators / modal | | ✔ (execute) | ✔ |
+| Interação (hover, press/drag, undo, cancel) | | ✔ (UI, local) | ✔ |
+| UX (hover, feedback) | | ✔ (UI: posição/estado) | ✔ |
 | Export/Godot | | ✔ (export) | ✔ | 
 
 ## Profiling
@@ -49,4 +51,5 @@ GitHub Actions (`.github/workflows/tests.yml`), em todo PR para `main`:
 
 - **unit** (obrigatório): Python 3.13, `dev.py test unit` + `scripts/checks.py`.
 - **blender**: baixa o Blender 5.2.x mais recente (`dev.py fetch-blender`, cacheado) e roda `dev.py test blender` + `validate`. Obrigatório (confirmado verde em 2026-10-03). Se falhar, o final da saída vira anotação de erro do check (`scripts/ci_annotate.py`).
+- Os testes de UI (`dev.py test ui`) **não** rodam no CI: exigem display e janela do Blender. Rodam localmente (mantenedor/agente) antes de declarar pronto algo que toque `interaction/`; os testes de Blender em background cobrem a mesma lógica via `execute`.
 - Godot headless entra no Escopo 2.

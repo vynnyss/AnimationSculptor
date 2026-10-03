@@ -14,7 +14,7 @@
 | **Segmento** | Intervalo entre dois key points consecutivos de um controle. |
 | **Pose key** | Frame onde o *escopo* (personagem inteiro ou bones selecionados) tem keys. Unidade das operações de timing. |
 | **Escopo de timing** | `CHARACTER` (todas as F-Curves do slot do rig) ou `SELECTED` (só bones selecionados). Padrão: `CHARACTER` — mexer no tempo de uma pose mexe na pose inteira. |
-| **Espaço-base `P(f)`** | Matriz 4×4 do espaço em que `location` do bone atua no frame `f`: `P(f) = M_arm(f) · M_pose(f) · M_basis(f)⁻¹`. Calculada pelo depsgraph (frame stepping) e cacheada. Algoritmo do Motiontrail3D. |
+| **Espaço-base `P(f)`** | Mapa afim 4×4 de `location` para a posição de mundo do head no frame `f`: `head_world = P(f) · location`, com rotação/escala do bone fixas. Obtido **perguntando ao Blender** (`Object.convert_space` LOCAL → POSE com `location` 0 e três eixos unitários; o head é afim em `location`, então 4 conversões dão `P` exato) e cacheado por frame. **Não** usar `M_arm · M_pose · M_basis⁻¹` (Motiontrail3D): só vale com `Bone.use_local_location = True`; controles IK do Rigify (`hand_ik`, `foot_ik`) têm `False` (o `torso` tem `True`), e com a fórmula antiga o grab andou na direção errada (achado do spike, 2026-10-03; teste `test_location_space_maps_location_to_head`). |
 
 ## Representação de um canal (`core/fcurve_model`)
 
@@ -34,7 +34,7 @@ Logo editar valores sem mexer no tempo é um problema **linear e exato** — sem
 
 Entrada: key point no frame `f`, delta de mundo `Δw` (do mouse, no plano da vista que passa pelo ponto).
 
-1. `Δl = R(f)⁻¹ · Δw`, com `R(f)` = parte 3×3 de `P(f)` (inclui escala do pai).
+1. `Δl = R(f)⁻¹ · Δw`, com `R(f)` = parte 3×3 de `P(f)` (`anim/spaces.location_space`, que respeita `use_local_location`, herança e pose do pai; inclui escala do pai).
 2. Eixos travados (`lock_location`) e canais sem F-Curve-editável: componente zerado (o ponto se move só nos eixos livres; a trail prevista mostra isso).
 3. Em cada canal `location[i]`: key em `f` recebe `y += Δlᵢ` e os dois handles `y += Δlᵢ` (translação rígida — preserva a forma local, como no Motion Trail). Se o canal não tem key em `f`, insere-se uma com o valor avaliado (handles `AUTO_CLAMPED` recalculados) antes de aplicar.
 4. **Soft grab** (falloff): os outros key points do mesmo controle a até `r` frames recebem `w(|fₖ−f|/r)·Δw`, cada um convertido pelo seu próprio `R(fₖ)⁻¹`. `r` ajustável com a roda do mouse durante o gesto; `r = 0` ⇒ só o ponto. Curvas de `core/falloff`.

@@ -23,11 +23,11 @@ Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
 | Desenho GPU de paths/onion | Live Motion Path | `draw.py` (`0e173fd`) | GPL-3+ | reutilizado + P1 | `trails/lmp/draw.py` | no repo (`feat/vendor-lmp`) |
 | Compat 5.x, handlers, props, ops, ui | Live Motion Path | `compat.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py` (`0e173fd`) | GPL-3+ | reutilizado + P1/P3/P5 (`ui.py` com P5; `prefs.py` não vendorizado; P6 não aplicado) | `trails/lmp/` | no repo (`feat/vendor-lmp`) |
 | Acesso a F-Curves via channelbag | Live Motion Path | `compat.get_fcurves` (`0e173fd`) | GPL-3+ | adaptado (só 5.2, + escrita) | `anim/action_io.py` | planejado |
-| Tela ⇄ mundo | Motion Trail | `animation_motion_trail.py`: `screen_to_world`, `world_to_screen` (`14ab927` do espelho) | GPL-2+ | portado | `interaction/picking.py` | planejado |
+| Tela ⇄ mundo | Motion Trail | `animation_motion_trail.py`: `screen_to_world`, `world_to_screen` (`14ab927` do espelho) | GPL-2+ | portado | `interaction/picking.py` | planejado (o spike usa `bpy_extras.view3d_utils` direto, sem código portado) |
 | Regras de tipo de handle ao editar | Motion Trail | `drag()` modo location/handle | GPL-2+ | portado | `core/sculpt_ops.py` | planejado |
 | Retime de key / time beads | Motion Trail | `drag()` modo timing | GPL-2+ | portado | `core/timing_ops.py` | planejado |
 | Speed via `handle.x` | Motion Trail | `drag()` modo speed | GPL-2+ | adaptado (pose-wide, x idêntico entre canais) | `core/timing_ops.py` | planejado |
-| Matriz espaço-pai por frame `P(f)` | Motiontrail3D (port 4.1) | `calculate_parent_matrix_cache` (`aa13ea9`) | GPL-3 | portado | `anim/spaces.py` | planejado |
+| Espaço-base `P(f)` | Motiontrail3D (port 4.1) | `calculate_parent_matrix_cache` (`aa13ea9`) | GPL-3 | **algoritmo substituído**: a fórmula do Motiontrail3D é incorreta com `use_local_location = False`; `location_space` usa `Object.convert_space` (código nosso). Motiontrail3D só como referência — nada portado | `anim/spaces.py` | no repo (`feat/interaction-spike`, código próprio) |
 | Busca de `t` por frame / split Bézier | Motiontrail3D (port 4.1) | `bezier_search_frame`, `bezier_split*` (`aa13ea9`) | GPL-3 | portado (vetorizado numpy) | `core/bezier.py` | planejado |
 | Avaliação Bézier de F-Curve | Blender | `BKE_fcurve` / `fcurve.cc` (5.2) | GPL-2+ | algoritmo portado | `core/bezier.py` | planejado |
 | Solver tangent-space + pins | Interactive Motion Path | `pose_anim_motion_curve.cc`: `MCSolver::solve`, `my_quadprog` (`4b5a6e7`) | GPL-2+ | algoritmo portado (Escopo 4) | `core/solve.py` | planejado |

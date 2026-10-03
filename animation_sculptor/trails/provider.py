@@ -56,7 +56,12 @@ def key_for(obj, bone: str | None = None) -> tuple:
 
 def get_trail(obj, bone: str | None = None) -> Trail | None:
     """Cached trail for ``obj`` (or one of its pose bones), or None when nothing is cached yet."""
-    cache = engine.CACHE.get(key_for(obj, bone))
+    return get_trail_by_key(key_for(obj, bone))
+
+
+def get_trail_by_key(key: tuple) -> Trail | None:
+    """Same as get_trail() for an (obj_name, bone) key."""
+    cache = engine.CACHE.get(tuple(key))
     if cache is None or cache.path_frames is None or cache.path_points is None:
         return None
     return Trail(

@@ -36,7 +36,8 @@ Pergunta ao próprio Blender onde fica o repositório de extensões `user_defaul
 | `link` / `unlink` | instala/remove a extensão por junction/symlink no seu perfil do Blender | ✅ |
 | `test unit [args pytest]` | pytest em `tests/unit` com o Python do sistema | ✅ |
 | `test blender [args pytest]` | pytest dentro do Blender em background, **perfil isolado** (`.blender_test_profile/`) | ✅ |
-| `test all` | unit + blender | ✅ |
+| `test ui [filtro]` | Blender **com janela** (`--enable-event-simulate`, perfil isolado) rodando os cenários `tests/ui/scenario_*.py` com `Window.event_simulate`; resultados e screenshots em `.blender_test_profile/ui/`. Precisa de display; só local, fora do CI ([detalhes](../testing/blender-tests.md#testes-de-ui-eventos-simulados)) | ✅ |
+| `test all` | unit + blender (não inclui `ui`) | ✅ |
 | `build` | `blender --command extension build` ⇒ `dist/animation_sculptor-<versão>.zip` | ✅ |
 | `validate` | regras estáticas (`scripts/checks.py`) + `blender --command extension validate` | ✅ |
 | `fetch-blender` | (CI Linux) baixa o Blender 5.2.x mais recente para `.blender/` | ✅ |

@@ -5,6 +5,7 @@
 ```
 python scripts/dev.py test blender            # todos
 python scripts/dev.py test blender -k spaces  # filtro pytest
+python scripts/dev.py test ui                 # GUI com eventos simulados (local; ver abaixo)
 ```
 
 Fluxo (adaptado do BlenderAddonTemplate):
@@ -21,6 +22,13 @@ Testes existentes:
 - `tests/blender/test_attack_asset.py` — asset local de ataque ([regression-assets](regression-assets.md)): metadados e markers, Action no slot do rig, controles keyados, keys nos frames das key poses, Bézier/auto-clamped, valores = literais do script, `IK_FK` (braço esquerdo FK), animação move de fato a mão da espada, tudo exceto o rig oculto, Actions anteriores preservadas na cópia e intactas no original.
 
 - `tests/blender/test_trails.py` (8 testes) — trails/LMP: namespace `asc_trails` registrado e coexistindo com o LMP original; onion skin desligado por padrão; trail (engine STEP em background) = posições avaliadas do head no rig público (tol 1e-5); `suspend` mantém o cache e `resume` invalida; `suspend` aninhado; restauração das configurações do P4; regressão do self-tag do P4 (`STATE.self_tagged`); trail no asset local de ataque (`hand_ik.R`, `foot_ik.L`, tol 1e-4 — pula sem o asset).
+- `tests/blender/test_sculpt_gesture.py` (23 testes, com parametrização) — spike de interação via `execute` paramétrico do operador (`obj_name`, `bone`, `frame`, `delta`), no rig público: classes registradas (tool, gizmo, operador); o grab move o controle pelo delta de mundo (< 1e-4 m) em `hand_ik.L` (frame 12), `foot_ik.R` (24) e `torso` (12); só a key do frame editado muda; delta zero = identidade (invariante 1); eixo travado não se move; recusas com driver em `location`, NLA ativa e frame sem key; trails retomadas após o gesto; `location_space` mapeia `location` → head (`hand_ik.L`, `foot_ik.R`, `torso`, `upper_arm_fk.R` × frames 1/7/12, tol 1e-5).
+
+## Testes de UI (eventos simulados)
+
+`python scripts/dev.py test ui [filtro]` gera o rig público, abre um Blender **com janela** (`--enable-event-simulate --factory-startup --addons bl_ext.user_default.animation_sculptor`, perfil isolado) e roda os cenários `tests/ui/scenario_*.py` (geradores que dirigem `Window.event_simulate`: mouse e teclas). `tests/ui/run_ui.py` é o runner; resultados em JSON e screenshots em `.blender_test_profile/ui/`. Precisa de display e **não roda no CI** (local apenas). O runner habilita auto-exec de scripts, porque o popup do `rig_ui.py` do Rigify bloqueia o primeiro evento simulado.
+
+`scenario_spike.py` (18 checagens, todas passando): a tool liga a trail (engine NATIVE); o hover escolhe a key; o press inicia o modal; o engine fica suspenso durante o arrasto; soltar encerra o gesto; o key point cai sob o cursor (erro 0,00 px); custo do mouse move 0,19 ms (só operador: escrita + atualização da F-Curve; exclui reavaliação do depsgraph e redesenho); as keys mudaram; nenhuma key criada e timing intacto; a trail recalculada após soltar coincide com o rig (1e-4); um Ctrl+Z restaura as keys exatamente; Ctrl+Shift+Z reaplica; Esc restaura bit a bit; nenhum gesto fica rodando; Ctrl+LMB não faz grab mas chega ao operador (recusa "tempo (retime/spacing): ainda não implementado").
 
 ## Fixtures (`tests/blender/conftest.py`)
 
@@ -41,12 +49,12 @@ Planejadas:
 | Action I/O | ler canais por slot/channelbag; `ensure` de F-Curve ausente; ida e volta `fcurve_model` sem perdas; recusa com drivers/NLA/modificadores |
 | Paridade Bézier | `core.bezier.evaluate` vs `FCurve.evaluate` em curvas aleatórias (seed fixa), todos os tipos de handle |
 | Handles | escrever ALIGNED colinear + `update()` ⇒ inalterado; conversão AUTO→ALIGNED |
-| `P(f)` | para `hand_ik.L`: `P(f) · local(f)` = posição avaliada do head em todos os frames (tol 1e-5); detecção de `P` constante |
+| `P(f)` | **feito** (`test_location_space_maps_location_to_head`): `P · location` = head avaliado para `hand_ik.L`, `foot_ik.R`, `torso`, `upper_arm_fk.R` em vários frames (tol 1e-5), incluindo bones com `use_local_location = False`. Falta: `P(f) · local(f)` em todos os frames via cache/prefetch e detecção de `P` constante |
 | Rigify adapter | detecção; conceitos → bones existentes; capacidades; `IK_FK`; nenhum controle `MCH/ORG/DEF` |
 | Grab/Arc (via core + escrita) | Δw aplicado ⇒ head avaliado no frame move Δw (tol 1e-4); keys/timing preservados no arc |
 | Retime/Spacing | todos os canais do personagem movidos; ordem preservada; caminho preservado (amostrado) |
-| Operador | `invoke` com evento sintético não é viável em background ⇒ operador expõe `execute` paramétrico (mesma lógica do gesto) para teste |
-| Undo | `bpy.ops.ed.undo_push` + operação + `ed.undo` restaura (onde suportado em background; senão coberto no manual) |
+| Operador | `invoke` com evento sintético não é viável em background ⇒ operador expõe `execute` paramétrico (mesma lógica do gesto) para teste; o fluxo real (hover, press, drag, release, Esc) é coberto pelos testes de UI com eventos simulados |
+| Undo | coberto na UI com Ctrl+Z / Ctrl+Shift+Z simulados (`scenario_spike.py`: 1 passo por gesto); `ed.undo` chamado de um timer com override falha no poll ⇒ usar o evento simulado. `bpy.ops.ed.undo_push` + `ed.undo` em background só onde suportado |
 | Save/reload | salvar em tmp, reabrir, Action idêntica, nenhuma propriedade extra além de `Scene.asc_*` |
 | Trails | engine STEP produz pontos = posições avaliadas; invalidação após edição |
 

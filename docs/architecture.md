@@ -1,6 +1,6 @@
 # Arquitetura
 
-> Estado: **esqueleto + trails** — existem `animation_sculptor/` (manifest, `__init__`, `core/` vazio, `ui/prefs.py`, `ui/panels.py`, `trails/` com `lmp/` vendorizado (P1–P5) e `provider.py`), `scripts/dev.py`, `scripts/checks.py`, `tests/unit`, `tests/blender` (incl. `public_rig.py`, que gera o rig Rigify público), CI. Ordem de registro: prefs, panels, trails. Os demais módulos abaixo são planejados. Atualize este documento quando a implementação divergir — o código vence, a doc é corrigida.
+> Estado: **esqueleto + trails + spike de interação** — existem `animation_sculptor/` (manifest, `__init__`, `core/` vazio, `ui/prefs.py`, `ui/panels.py`, `trails/` com `lmp/` vendorizado (P1–P5) e `provider.py`, `anim/spaces.py`, `interaction/` com a tool, o gizmo, o overlay e o operador modal de grab, em qualidade de spike), `scripts/dev.py` (incl. `test ui`), `scripts/checks.py`, `tests/unit`, `tests/blender` (incl. `public_rig.py`, que gera o rig Rigify público), `tests/ui` (GUI com eventos simulados, só local), CI. Ordem de registro: prefs, panels, trails, interaction. Os demais módulos abaixo são planejados; os marcados "spike" na tabela existem mas serão refatorados no próximo item. Atualize este documento quando a implementação divergir — o código vence, a doc é corrigida.
 
 ## Visão geral
 
@@ -51,16 +51,19 @@ Regra central ([ADR 0008](decisions/0008-pure-python-core.md)): **`core/` não i
 | `core/solve.py` | Mínimos quadrados amortecidos com restrições lineares (pins). Base do futuro Tangent-Space. | numpy | `MCSolver` do fork Interactive Motion Path (portado para numpy) |
 | `anim/action_io.py` | Ler/escrever F-Curves via **Slotted Actions** (`action → slot → channelbag → fcurves`). Converte F-Curve ⇄ `fcurve_model`. Escrita em lote com `foreach_set` + `fcurve.update()`. | bpy, core | `compat.get_fcurves` do LMP (adaptado, só 5.2) |
 | `anim/snapshot.py` | Snapshot/restore de canais para *cancel* durante o modal. Undo real fica com o sistema do Blender. | action_io | novo |
-| `anim/spaces.py` | **Matriz de espaço-base por frame** `P(f)` de um pose bone: o espaço onde `location` atua. Cache por (rig, bone, frame), com detecção de "constante" (pai sem animação). | bpy | algoritmo `calculate_parent_matrix_cache` do Motiontrail3D |
+| `anim/spaces.py` | **Espaço-base `P(f)`** de um pose bone: mapa afim de `location` para o head em mundo. **Implementado**: `location_space(ob, pb)` para o frame avaliado atual, via `Object.convert_space` LOCAL → POSE (4 conversões); respeita `use_local_location`, herança e pose do pai. Planejado: cache por (rig, bone, frame) com prefetch e detecção de "constante" (pai sem animação). | bpy | novo (a fórmula `M_arm · M_pose · M_basis⁻¹` do Motiontrail3D é incorreta com `use_local_location = False`; só referência) |
 | `rig/concepts.py` | Vocabulário do core: `root, hips, chest, head, upper_arm.L, forearm.L, hand.L, hand_ik.L, pole_arm.L, thigh.L, shin.L, foot.L, foot_ik.L, pole_leg.L` (+ `.R`). | — | novo |
 | `rig/adapter.py` | Interface `RigAdapter`: detectar rig, mapear conceito ⇄ bone, classificar controles (translação / rotação), ler estado IK/FK, listar deform bones. | concepts | novo |
 | `rig/generic.py` | Fallback: qualquer bone com canais de `location` é "controle de translação". Garante que a ferramenta funcione sem adapter. | adapter | novo |
 | `rig/rigify.py` | Adapter Rigify (nomes, `IK_FK`, `IK_parent`, `DEF-*`). | adapter | novo, usando convenções do Rigify |
 | `trails/lmp/` | **Live Motion Path & Onion Skin vendorizado**: engine (F-Curve / native solver / frame stepping), cache, scheduler debounced + time-sliced, handlers, desenho GPU de paths e onion skin. Namespace renomeado. | bpy | LMP (GPL-3) — [ADR 0001](decisions/0001-live-motion-path-foundation.md) |
 | `trails/provider.py` | Façade estável usada pelo resto do addon: `get_trail(rig, bone) → (frames, points, keyframes)`, `suspend()/resume()` durante o sculpt, `invalidate(targets)`. Isola o resto do código do engine vendorizado. | lmp | novo |
-| `interaction/sculpt_tool.py` | Operador modal "Animation Sculptor": hover, picking, drag, cancel/confirm, um passo de undo por gesto. | tudo acima | novo; matemática de tela de Motion Trail |
-| `interaction/picking.py` | Hit-test em espaço de tela (pontos de key, pontos amostrados, segmentos). | bpy_extras.view3d_utils | `screen_to_world` do Motion Trail (modernizado) |
-| `interaction/overlay.py` | Desenho do estado de sculpt por cima das trails do LMP: hover, seleção, falloff, preview do gesto, frame atual. | gpu, blf | padrões de `draw.py` do LMP |
+| `interaction/__init__.py` | Registro da tool, do gizmo e do overlay. **Implementado (spike)** | — | novo |
+| `interaction/gizmo.py` | Grupo de gizmos `ASC_GGT_trails` (ligado à tool por `bl_widget`; `poll` checa a tool ativa; `setup` liga as trails por timer) com `ASC_GT_trail_points`: `test_select` faz o hover e `target_set_operator("asc.sculpt_gesture")` entrega LMB/Ctrl+LMB ao operador. **Implementado (spike)** | bpy, picking, state | novo ([ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md)) |
+| `interaction/state.py` | Estado transitório de interação (hover, gesto em curso). Não persiste (o único estado persistente é a Action). **Implementado (spike)** | — | novo |
+| `interaction/sculpt_tool.py` | `ASC_WT_sculpt` (`WorkSpaceTool` em Pose Mode, id `animation_sculptor.sculpt`, registrada depois de Transform; keymap: clique seleciona bone, shift+clique alterna, arrasto em vazio = caixa; `bl_widget` aponta para o grupo de gizmos) e operador modal `ASC_OT_sculpt_gesture` (`asc.sculpt_gesture`, `REGISTER`+`UNDO`): grab de key point de controle de translação (delta de mouse no plano da vista → `Δl = R(f)⁻¹Δw`, rígido em key+handles, eixos travados pulados, Shift = precisão ×0,1); soltar = `FINISHED` (1 passo de undo) + `provider.resume`; Esc/RMB = restaura o snapshot bit a bit; recusas com motivo; `execute` paramétrico para testes. **Implementado (spike)**: o acesso a F-Curves mora aqui por enquanto e migra para `anim/action_io` + `core/` no próximo item (dívida técnica). Retime/spacing/arc ainda não. | tudo acima | novo; matemática de tela de Motion Trail |
+| `interaction/picking.py` | Hit-test em espaço de tela (`hit_test`: 12 px, keys favorecidas por 2 px). **Implementado (spike)**: pontos de key e amostrados; segmentos ainda não. | bpy_extras.view3d_utils | novo (planejado portar `screen_to_world` do Motion Trail) |
+| `interaction/overlay.py` | Desenho do estado de sculpt por cima das trails do LMP (POST_PIXEL). **Implementado (spike)**: anel de hover (branco = key, azul claro = in-between) e anel laranja durante o gesto. Planejado: seleção, falloff, preview do gesto. | gpu | padrões de `draw.py` do LMP |
 | `pipeline/bake.py` | Bake control rig → deform bones (wrapper de `nla.bake` com opções corretas). | bpy, rig | nativo do Blender |
 | `pipeline/export_gltf.py` | Export glTF com preset para Godot (deform only, actions, sampling). | bpy | exportador oficial |
 | `pipeline/validate.py` | Checagens antes do export (escala, B-Bones, hierarquia, curvas não bakeadas). | rig | novo; problemas documentados pelo GameRig |
@@ -84,6 +87,8 @@ sequenceDiagram
 ```
 
 ### Gesto de sculpt (por arrasto)
+
+> Alvo. O spike implementa uma versão simplificada: sem `core/` nem preview analítico, aplica o delta direto nas F-Curves de `location` (key + handles) a cada mouse move e deixa o rig reavaliar; o resto do fluxo (suspend, snapshot, 1 passo de undo, restore no Esc, resume) já é real.
 
 ```mermaid
 sequenceDiagram
@@ -110,7 +115,7 @@ sequenceDiagram
     T-->>U: 1 passo de undo
 ```
 
-Ponto-chave de performance: durante o arrasto **não** reavaliamos o Rigify. Para controles de translação, a trail do próprio controle é recalculada analiticamente: `world(f) = P(f) · local(f)`, com `P(f)` em cache e `local(f)` avaliado pelo `core/bezier` em numpy. É exato enquanto o controle editado não influencia o próprio pai (verdade para IK controls, torso, root). Ao soltar, o engine do LMP recalcula a verdade pelo depsgraph.
+Ponto-chave de performance: durante o arrasto **não** reavaliamos o Rigify. Para controles de translação, a trail do próprio controle é recalculada analiticamente: `world(f) = P(f) · local(f)`, com `P(f)` em cache (obtido por `Object.convert_space`, ver [modelo](design/motion-sculpt-model.md#conceitos); exige avançar o frame para cada `f`, daí o prefetch) e `local(f)` avaliado pelo `core/bezier` em numpy. É exato enquanto o controle editado não influencia o próprio pai (verdade para IK controls, torso, root). Ao soltar, o engine do LMP recalcula a verdade pelo depsgraph.
 
 ## Integração com o Blender
 
