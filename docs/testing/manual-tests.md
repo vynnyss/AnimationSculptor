@@ -11,7 +11,7 @@
 
 ## M1 — Bloqueio de ataque (Escopo 1, ~30 min) ★ teste principal
 
-Asset: `tests/assets/rigify_humanoid.blend` (ou personagem Rigify do usuário).
+Asset: `tests/assets/local/attack_test.blend` (`python scripts/dev.py assets`) ou personagem Rigify do usuário.
 
 1. Pose Mode. Criar key poses nos frames 1 (idle), 10 (antecipação), 16 (ataque), 18 (impacto), 26 (follow-through), 40 (recuperação) com a mão IK, pés IK, torso e root (keyar com `I` como sempre).
 2. Ativar a tool Animation Sculptor; selecionar `hand_ik.R` (mão do golpe): trail aparece; keys como losangos; frame atual marcado.

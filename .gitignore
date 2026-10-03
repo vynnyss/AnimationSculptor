@@ -10,3 +10,4 @@ scripts/.dev.toml
 .godot/
 .blender/
 .pytest_cache/
+tests/assets/local/

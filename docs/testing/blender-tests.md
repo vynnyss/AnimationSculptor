@@ -14,14 +14,16 @@ Fluxo (adaptado do BlenderAddonTemplate):
 3. Instala `pytest` (puro Python) em `.blender_test_profile/pydeps` com o **Python do sistema** (`pip install --target`), uma vez. Não escreve na instalação do Blender (que no Windows fica em Program Files, sem permissão).
 4. Cria junction/symlink do working tree em `<perfil>/extensions/user_default/animation_sculptor` — sem build/zip, código atual sempre.
 5. Roda `blender --background --factory-startup --python-exit-code 1 --python tests/blender/run.py -- <args pytest>`; o `run.py` habilita `bl_ext.user_default.animation_sculptor` (falha se o registro der erro) e chama `pytest.main`.
-6. (A partir dos assets) cada teste abre um `.blend` de `tests/assets/` com `bpy.ops.wm.open_mainfile` — estado limpo por teste.
+6. Testes de asset abrem o `.blend` com `bpy.ops.wm.open_mainfile` (fixture de módulo). `dev.py` passa `ASC_TEST_ASSET` e, se configurado, `ASC_TEST_CHARACTER`; sem o arquivo, os testes pulam.
 
-Testes existentes: `tests/blender/test_smoke.py` (versão 5.2, extensão habilitada, painel e preferências registrados, ciclo disable/enable, `core` importável a partir da extensão instalada).
+Testes existentes:
+- `tests/blender/test_smoke.py` — versão 5.2, extensão habilitada, painel e preferências registrados, ciclo disable/enable, `core` importável a partir da extensão instalada.
+- `tests/blender/test_attack_asset.py` — asset local de ataque ([regression-assets](regression-assets.md)): metadados e markers, Action no slot do rig, controles keyados, keys nos frames das key poses, Bézier/auto-clamped, valores = literais do script, `IK_FK` (braço esquerdo FK), animação move de fato a mão da espada, tudo exceto o rig oculto, Actions anteriores preservadas na cópia e intactas no original.
 
 ## Fixtures planejadas (`tests/blender/conftest.py`)
 
 - `rigify_rig` — abre `rigify_humanoid.blend`, retorna o objeto do rig gerado.
-- `attack_action` — abre `attack_test.blend`, rig com Action de ataque em key poses.
+- `attack_action` — abre `attack_test.blend`, rig com Action de ataque em key poses (hoje: fixtures `scene`/`rig`/`channelbag` em `test_attack_asset.py`; promover para `conftest.py` quando outros módulos usarem).
 - `simple_rig` — armature de 3 bones sem Rigify (adapter genérico).
 - `force_step_engine` — configura o engine do LMP em `STEP` (native solver exige janela).
 

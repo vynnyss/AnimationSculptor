@@ -16,10 +16,19 @@
 
 - `Action.fcurves` removido no 5.0 ✅ (LMP compat).
 - `AnimData.action_slot` ✅; `bpy_extras.anim_utils.action_get_channelbag_for_slot(action, slot)` ✅ (usado pelo LMP).
-- `anim_utils.action_ensure_channelbag_for_slot(action, slot)` ⏳.
-- `ActionChannelbag.fcurves.new(data_path, index=0, group_name="")`, `.ensure(...)`, `.find(data_path, index=0)`, `.remove(fcurve)` ⏳ (assinaturas exatas).
+- `anim_utils.action_ensure_channelbag_for_slot(action, slot)` ✅ (5.2.1: garante layer + keyframe strip e devolve o channelbag; usado por `scripts/make_test_assets.py`).
+- `Action.slots.new(id_type='OBJECT', name=...)` ✅ → identificador `OB<name>`; atribuir com `adt.action = action` e `adt.action_slot = slot` ✅.
+- `ActionChannelbag.fcurves.new(data_path, index=0, group_name="")`, `.ensure(data_path, index=0, group_name="")`, `.find(data_path, index=0)`, `.remove(fcurve)`, `.clear()`, `.new_from_fcurve(source, data_path=...)` ✅ (5.2.1). `group_name` cria/usa o grupo no channelbag ✅.
+- Iterar todas as F-Curves de uma Action: `action.layers[i].strips[j].channelbags[k].fcurves` (+ `channelbag.slot`) ✅.
+- Padrão de keys novas (preferências de fábrica): interpolação `BEZIER`, handles `AUTO_CLAMPED` ✅.
 - `Action.layers[i].strips[j].channelbag(slot)` ✅ (LMP).
 - Inserção de keys: `FCurve.keyframe_points.insert(frame, value, options={'FAST'})`, `foreach_get/foreach_set` em `co`, `handle_left`, `handle_right` ✅ (API estável); `FCurve.update()` ✅.
+
+## Background / render
+
+- `blender --background <arquivo> --python script.py -- args` + `bpy.ops.render.render(write_still=True)` com `BLENDER_WORKBENCH` funciona no Windows (5.2.1) ✅ — usado pelos previews de `dev.py assets --preview`.
+- `bpy.ops.wm.open_mainfile` dentro dos testes mantém a extensão habilitada ✅; `bpy.data.libraries.load(path, link=False)` para ler Actions de outro arquivo ✅.
+- `save_as_mainfile(copy=True, compress=True)` grava cópia sem mudar `bpy.data.filepath` ✅.
 
 ## Pose / bones
 
@@ -52,6 +61,7 @@ Nomes de propriedades de `bpy.ops.export_scene.gltf` a confirmar ⏳: `export_fo
 
 ## Rigify no 5.2
 
-- Bundled e funcional ⏳ (manual do 5.1 ainda documenta Rigify como add-on de rigging).
-- Nomes de controles e props `IK_FK`, `IK_parent` em `*_parent.L/R` ⏳ — validar no rig gerado.
-- Controles em `QUATERNION` por padrão ⏳.
+- Bundled ✅ (módulo de add-on `rigify` presente no 5.2.1; não é extensão). Rig gerado abre e avalia no 5.2.1 ✅.
+- Nomes de controles e props `IK_FK` (0 = IK, 1 = FK), `IK_parent`, `pole_parent`, `IK_Stretch`, `FK_limb_follow`, `pole_vector` em `upper_arm_parent.*`/`thigh_parent.*` ✅ — tabela em [rig-adapter](../design/rig-adapter.md#rigifyadapter).
+- Controles principais em `QUATERNION` ✅; exceções em `YXZ` (shoulder, breast) e `ZXY` (tweaks, `*_ik` de upper_arm/thigh, `foot_heel_ik`).
+- `rig_ui.py` (operadores de snap) só registra com auto-exec de scripts ligado; em `--background --factory-startup` não existe ✅.
