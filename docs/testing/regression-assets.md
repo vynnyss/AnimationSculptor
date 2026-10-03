@@ -23,7 +23,7 @@ O arquivo original **só é lido** (`save_as_mainfile(copy=True)` para outro cam
 | Asset | Conteúdo | Gerado por | Usado em |
 |---|---|---|---|
 | `tests/assets/local/attack_test.blend` (local) | Cópia do personagem; tudo exceto o control rig Rigify oculto (viewport e render: meshes, espada, armatures auxiliares); Action `asc_test_attack` no slot `OB<rig>`; markers das key poses; Actions anteriores preservadas (fake user) e com fingerprint | `python scripts/dev.py assets` (`scripts/make_test_assets.py`) | `tests/blender/test_attack_asset.py`; integração futura (trails, `P(f)`, sculpt); manual M1 |
-| `tests/assets/rigify_humanoid.blend` | Metarig "Human" do Rigify 5.2 gerado, mesh simples, sem animação — **asset público para o CI** | planejado | integração no CI |
+| rig Rigify público (gerado em tempo de teste; **sem binário** no repo) | Metarig "Human" do Rigify 5.2 → `pose.rigify_generate` num Blender de fundo (~6 s, uma vez por sessão); Action `asc_public_test`, frames 1–24, keys em 1/12/24: `hand_ik.L` (loc+quat), `foot_ik.R` (loc), `torso` (loc), `upper_arm_fk.R` (quat). **Asset público para o CI** | `tests/blender/public_rig.py` (fixtures `public_rig_path`/`public_rig`) | `tests/blender/test_trails.py`; roda no CI |
 | `tests/assets/simple_rig.blend` | Armature de 3 bones + objeto animado simples, sem Rigify | planejado | adapter genérico, paridade |
 | `tests/assets/edge_cases.blend` | Canais com driver, NLA ativa, modificador de F-Curve, segmento LINEAR, eixo travado | planejado | recusas |
 

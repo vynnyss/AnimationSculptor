@@ -4,13 +4,24 @@
 
 ## Estado
 
-Nenhum código de terceiros copiado ainda. `scripts/dev.py` segue a *estrutura* do BlenderAddonTemplate (subcomandos build/test, pytest dentro do Blender), com código escrito do zero. A tabela abaixo é o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
+Código de terceiros no repo: **Live Motion Path** (`0e173fd`, GPL-3+, copyright "2026 Experience Elysian") vendorizado em `animation_sculptor/trails/lmp/` (`__init__.py`, `compat.py`, `engine.py`, `draw.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py`), na branch `feat/vendor-lmp`. O `LICENSE` upstream é idêntico ao da raiz. O `prefs.py` upstream **não** foi vendorizado; o `ui.py` foi vendorizado com P5. A fachada `trails/provider.py` é código nosso.
+
+Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
+
+- **P1**: namespace renomeado em todos os arquivos: `Scene.motion_onion` → `Scene.asc_trails`, classes `LMO_*` → `ASC_TR_*` (não `ASC_*`, pois `ASC_PT_main` é painel nosso), operadores `motion_onion.*` → `asc_trails.*`.
+- **P2**: imports já eram relativos ao pacote no upstream; `lmp/__init__.py` adaptado (sem `prefs`; registro feito por `animation_sculptor/trails/__init__.py`).
+- **P3**: `engine.suspend()`, `engine.resume(keys)`, `engine.is_suspended()`, `engine.invalidate_keys(keys)`; suspenso, `schedule()`, ticks do timer, `frame_changed` e `depsgraph_changed` só registram uma atualização pendente; trails em cache continuam desenhadas (fantasma durante o gesto de sculpt).
+- **P4**: o native solver (`native_object_path`, `native_bone_paths`) salva e restaura `animation_visualization.motion_path` (type, range, frame_start, frame_end, bake_location).
+- **P5**: painéis na aba Animation Sculptor, aninhados em `ASC_PT_main` (painel LMP principal renomeado "Trails"); sem botão no header, sem entradas no popover Overlays, sem preferências próprias; `onion_show` padrão False.
+- **P6** (remover ramos < 5.0 de `compat.py`): **não aplicado**.
+
+`scripts/dev.py` segue a *estrutura* do BlenderAddonTemplate (subcomandos build/test, pytest dentro do Blender), com código escrito do zero. As demais linhas da tabela abaixo são o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
 
 | Componente | Projeto origem | Arquivo origem (commit) | Licença | Estratégia | Destino | Status |
 |---|---|---|---|---|---|---|
-| Engine de trails, cache, scheduler | Live Motion Path | `engine.py` (`0e173fd`) | GPL-3+ | reutilizado + patches P1–P4 | `animation_sculptor/trails/lmp/engine.py` | planejado |
-| Desenho GPU de paths/onion | Live Motion Path | `draw.py` (`0e173fd`) | GPL-3+ | reutilizado + P1 | `trails/lmp/draw.py` | planejado |
-| Compat 5.x, handlers, props, ops | Live Motion Path | `compat.py`, `handlers.py`, `props.py`, `ops.py` (`0e173fd`) | GPL-3+ | reutilizado + P1/P3/P5 | `trails/lmp/` | planejado |
+| Engine de trails, cache, scheduler | Live Motion Path | `engine.py` (`0e173fd`) | GPL-3+ | reutilizado + patches P1–P4 | `animation_sculptor/trails/lmp/engine.py` | no repo (`feat/vendor-lmp`) |
+| Desenho GPU de paths/onion | Live Motion Path | `draw.py` (`0e173fd`) | GPL-3+ | reutilizado + P1 | `trails/lmp/draw.py` | no repo (`feat/vendor-lmp`) |
+| Compat 5.x, handlers, props, ops, ui | Live Motion Path | `compat.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py` (`0e173fd`) | GPL-3+ | reutilizado + P1/P3/P5 (`ui.py` com P5; `prefs.py` não vendorizado; P6 não aplicado) | `trails/lmp/` | no repo (`feat/vendor-lmp`) |
 | Acesso a F-Curves via channelbag | Live Motion Path | `compat.get_fcurves` (`0e173fd`) | GPL-3+ | adaptado (só 5.2, + escrita) | `anim/action_io.py` | planejado |
 | Tela ⇄ mundo | Motion Trail | `animation_motion_trail.py`: `screen_to_world`, `world_to_screen` (`14ab927` do espelho) | GPL-2+ | portado | `interaction/picking.py` | planejado |
 | Regras de tipo de handle ao editar | Motion Trail | `drag()` modo location/handle | GPL-2+ | portado | `core/sculpt_ops.py` | planejado |

@@ -16,8 +16,8 @@
 | `handlers.py` | 79 | depsgraph/frame/playback/load/undo/redo, `@persistent` | **vendorizado** |
 | `props.py` | 362 | `Scene.motion_onion` (todas as opções) | **vendorizado com renomeação** |
 | `ops.py` | 254 | refresh, clear cache, bake onion, pins, reset | vendorizado (operadores renomeados) |
-| `ui.py` | 457 | Painéis sidebar, botão no header, entradas no popover Overlays | **adaptado**: integrado ao painel do Animation Sculptor |
-| `prefs.py` | 53 | aba da sidebar, botão no header | substituído pelas prefs do Animation Sculptor |
+| `ui.py` | 457 | Painéis sidebar, botão no header, entradas no popover Overlays | **vendorizado com P5**: integrado ao painel do Animation Sculptor |
+| `prefs.py` | 53 | aba da sidebar, botão no header | **não vendorizado** |
 
 ## Engine — como funciona
 
@@ -61,13 +61,13 @@ Implicação central: **para bones de Rigify não existe caminho barato no LMP**
 
 ## Patches planejados (registrar cada um em [open-source-provenance.md](open-source-provenance.md))
 
-| # | Patch | Motivo |
-|---|---|---|
-| P1 | Renomear `motion_onion`/`LMO_*`/`motion_onion.*` → `asc_trails`/`ASC_*`/`asc_trails.*` | coexistência com LMP instalado |
-| P2 | Imports relativos dentro de `trails/lmp/` | vendorização |
-| P3 | Hook `suspend()/resume()` + `invalidate(keys)` | sculpt sem recomputação concorrente |
-| P4 | Restaurar `animation_visualization.motion_path` após native solver | não sujar o `.blend` |
-| P5 | Remover painéis próprios / header button; expor via nosso `ui/` | UI única |
-| P6 | (opcional) remover ramos < 5.0 em `compat.py` | baseline 5.2 |
+| # | Patch | Motivo | Status |
+|---|---|---|---|
+| P1 | Renomear `motion_onion`/`LMO_*`/`motion_onion.*` → `asc_trails`/`ASC_TR_*`/`asc_trails.*` (`ASC_TR_`, não `ASC_`, pois `ASC_PT_main` é nosso) | coexistência com LMP instalado | aplicado |
+| P2 | Imports relativos dentro de `trails/lmp/` | vendorização | aplicado (já eram relativos; `lmp/__init__.py` adaptado) |
+| P3 | Hook `suspend()/resume(keys)/is_suspended()` + `invalidate_keys(keys)` | sculpt sem recomputação concorrente | aplicado |
+| P4 | Restaurar `animation_visualization.motion_path` após native solver (+ `STATE.self_tagged`: o restore marca o rig para update; o engine registra os IDs e `depsgraph_changed` ignora esse único update, senão a trail recomputava para sempre) | não sujar o `.blend` | aplicado |
+| P5 | Painéis aninhados em `ASC_PT_main`; sem header button, sem popover Overlays, sem prefs próprias | UI única | aplicado |
+| P6 | (opcional) remover ramos < 5.0 em `compat.py` | baseline 5.2 | não aplicado |
 
 Manter cada patch pequeno e marcado com `# ASC-PATCH Pn` para facilitar diff com upstream.
