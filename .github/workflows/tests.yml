@@ -21,9 +21,6 @@ jobs:
 
   blender:
     runs-on: ubuntu-latest
-    # Download URL/headless behaviour of Blender 5.2 on CI not yet confirmed green;
-    # remove continue-on-error once this job has passed once (see docs/agenda.md).
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

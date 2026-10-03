@@ -13,7 +13,7 @@ Planejamento mergeado na `main` (PR #1). Em revisão: **esqueleto do repositóri
 - Extensão `animation_sculptor` 0.1.0 (Blender 5.2): registra preferências e um painel informativo em 3D Viewport › N › Animation Sculptor.
 - `scripts/dev.py`: `link`/`unlink`, `test unit|blender|all`, `build`, `validate`, `fetch-blender`.
 - `scripts/checks.py`: regras estáticas (core sem bpy, nomes de bones só em `rig/`, manifest, links da documentação).
-- CI no GitHub: job `unit` e job `blender` (este ainda `continue-on-error`).
+- CI no GitHub verde: job `unit` (pytest real) e job `blender` (baixa o Blender 5.2.x, roda os testes de smoke dentro dele e `extension validate`).
 
 ## Parcialmente implementado
 
@@ -37,8 +37,8 @@ Esqueleto do repositório: pacote `animation_sculptor/` (manifest, `__init__` se
 
 | Suite | Passa | Falha | Observação |
 |---|---|---|---|
-| unit | 8 | 0 | executados no ambiente do agente com executor mínimo (sem PyPI); pytest real roda no CI e na máquina do mantenedor |
-| blender | ? | ? | 5 testes de smoke escritos; **ainda não executados** (sem Blender no ambiente do agente) — rodar `python scripts/dev.py test blender` |
+| unit | 8 | 0 | CI (pytest, Python 3.13) |
+| blender | 5 | 0 | CI Linux com Blender 5.2.x; falta confirmar no Windows do mantenedor |
 | manual | — | — | M0 (instalação) aplicável a partir deste PR |
 | godot | — | — | Escopo 2 |
 

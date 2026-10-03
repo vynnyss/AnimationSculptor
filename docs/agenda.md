@@ -27,7 +27,6 @@
 
 ## Investigação
 
-- Job `blender` do CI: confirmar que baixa o 5.2 e passa; então remover `continue-on-error`.
 
 - Confirmar no Blender 5.2 real os itens de [development/blender-5.2-notes.md](development/blender-5.2-notes.md) (assinaturas de channelbag, nomes de opções glTF, gizmo Python `test_select`, `Window.modal_operators`).
 - Política de spacing `PRESERVE_PATH` vs `PRESERVE_SMOOTHNESS` — decidir com o usuário testando o protótipo; registrar ADR.
