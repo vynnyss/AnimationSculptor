@@ -38,5 +38,11 @@ jobs:
           key: blender-5.2-${{ runner.os }}
       - name: Fetch Blender 5.2
         run: echo "BLENDER_EXE=$(python scripts/dev.py fetch-blender | tail -n 1)" >> "$GITHUB_ENV"
-      - run: python scripts/dev.py test blender
+      - name: Blender tests
+        run: |
+          set -o pipefail
+          python scripts/dev.py test blender 2>&1 | tee blender-tests.log
+      - name: Report Blender test output
+        if: failure()
+        run: python scripts/ci_annotate.py blender-tests.log
       - run: python scripts/dev.py validate
