@@ -106,10 +106,37 @@ def prefetch(ob, pb, frames, scene):
         return np.repeat(p[None], len(frames), axis=0), True
     current, sub = scene.frame_current, scene.frame_subframe
     mats = np.empty((len(frames), 4, 4))
-    try:
-        for i, f in enumerate(frames):
-            scene.frame_set(f)
-            mats[i] = np.array(location_space(ob, pb), dtype=np.float64)
-    finally:
-        scene.frame_set(current, subframe=sub)
+    with preserve_pose(ob):
+        try:
+            for i, f in enumerate(frames):
+                scene.frame_set(f)
+                mats[i] = np.array(location_space(ob, pb), dtype=np.float64)
+        finally:
+            scene.frame_set(current, subframe=sub)
     return mats, False
+
+
+_POSE_CHANNELS = ("location", "rotation_quaternion", "rotation_euler", "rotation_axis_angle", "scale")
+
+
+class preserve_pose:
+    """Context manager: frame stepping re-applies the Action and would discard pose edits that are not
+    keyed yet; the current pose of ``ob`` is put back on exit."""
+
+    def __init__(self, ob):
+        self.ob = ob
+
+    def __enter__(self):
+        self.saved = [(pb.name, [tuple(getattr(pb, c)) for c in _POSE_CHANNELS]) for pb in self.ob.pose.bones]
+        return self
+
+    def __exit__(self, *exc):
+        bones = self.ob.pose.bones
+        for name, values in self.saved:
+            pb = bones.get(name)
+            if pb is None:
+                continue
+            for channel, value in zip(_POSE_CHANNELS, values):
+                if tuple(getattr(pb, channel)) != value:
+                    setattr(pb, channel, value)
+        return False

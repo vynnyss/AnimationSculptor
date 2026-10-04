@@ -84,6 +84,10 @@ def draw_pixel():
     hover, gesture, refusal = state.HOVER, state.GESTURE, state.REFUSAL
     if hover is None and gesture is None and refusal is None:
         return
+    settings = getattr(bpy.context.scene, "asc_sculpt", None)
+    screen = bpy.context.screen
+    if settings is not None and settings.hide_on_playback and screen is not None and screen.is_animation_playing:
+        return
     context = bpy.context
     region, rv3d = context.region, context.region_data
     if region is None or rv3d is None:

@@ -140,14 +140,29 @@ def test_action_update_invalidates_trail(public_rig, provider, engine):
 
 def test_native_points_validated_against_live_bone(public_rig, engine):
     """ASC-PATCH P8 (found with a UI scenario): pose.paths_calculate returns silent zeros for bones in a
-    hidden collection; such a native path is rejected so the bone falls back to frame stepping."""
+    hidden collection; such a native path is rejected so the bone falls back to frame stepping. A path
+    that differs from an unkeyed live pose is valid (maintainer report on PR #11: comparing with the live
+    pose sent the engine to frame stepping, which threw the unkeyed pose away)."""
     scene = bpy.context.scene
     scene.frame_set(5)
     pb = public_rig.pose.bones["hand_ik.L"]
     live = tuple(public_rig.matrix_world @ pb.head)
     assert engine._native_points_valid(public_rig, "hand_ik.L", {5: live}, 5, 'HEAD')
-    assert not engine._native_points_valid(public_rig, "hand_ik.L", {5: (0.0, 0.0, 0.0)}, 5, 'HEAD')
-    assert engine._native_points_valid(public_rig, "hand_ik.L", {9: (0.0, 0.0, 0.0)}, 5, 'HEAD')  # frame not computed
+    assert engine._native_points_valid(public_rig, "hand_ik.L", {5: (live[0] + 0.3, live[1], live[2])}, 5, 'HEAD')
+    assert not engine._native_points_valid(public_rig, "hand_ik.L", {4: (0.0, 0.0, 0.0), 5: (0.0, 0.0, 0.0)}, 5, 'HEAD')
+
+
+def test_frame_stepping_keeps_unkeyed_pose(public_rig, provider):
+    """ASC-PATCH P10: the STEP engine changes frames (re-applying the Action) but restores the unkeyed pose."""
+    scene = bpy.context.scene
+    _pin(scene, public_rig, ["hand_ik.L"])          # STEP engine
+    scene.frame_set(6)
+    pb = public_rig.pose.bones["hand_ik.L"]
+    pb.location.x += 0.2
+    edited = tuple(pb.location)
+    provider.update_now()
+    assert provider.get_trail(public_rig, "hand_ik.L") is not None
+    assert tuple(pb.location) == edited
 
 
 def test_trail_on_local_attack_asset(attack_rig, provider):

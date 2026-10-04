@@ -65,3 +65,13 @@ def test_prefetch_cost_on_character(attack_rig, spaces, record_property):
     record_property("p_f_ms_per_frame", per_frame)
     print(f"\n[profile] P(f) prefetch hand_ik.R: {per_frame:.2f} ms/frame over {len(frames)} frames")
     assert per_frame < 50.0
+
+
+def test_prefetch_keeps_unkeyed_pose(public_rig, spaces):
+    scene = bpy.context.scene
+    scene.frame_set(6)
+    torso = public_rig.pose.bones["torso"]
+    torso.location.z += 0.1
+    edited = tuple(torso.location)
+    spaces.prefetch(public_rig, public_rig.pose.bones["hand_ik.L"], list(range(1, 25)), scene)
+    assert tuple(torso.location) == edited

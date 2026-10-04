@@ -19,13 +19,30 @@
 | Ctrl+LMB arrastar | key point | **Retime** da pose key (**implementado**: ao longo da trail; frames inteiros; Shift = sub-frame e precisão) |
 | Ctrl+LMB arrastar | segmento (in-between) | **Spacing** (**implementado**: horizontal = favor, vertical = ease, 250 px por 1,0) |
 | Shift (segurando) | durante gesto | precisão ×0.1 |
-| Roda / `[` `]` | durante grab | raio do soft grab (frames); lembrado na sessão |
+| Roda / `[` `]` | durante grab | raio do soft grab (frames); gravado em `Scene.asc_sculpt.soft_radius` (salvo no arquivo) |
 | `B` | durante arc drag | alterna "quebrar tangente" (`FREE`); começa desligado |
 | Esc / RMB | durante gesto | cancela (restaura snapshot) |
 | soltar / Enter | durante gesto | confirma (1 passo de undo) |
 | Ctrl+Z | — | undo normal do Blender |
 
-Teclas evitam `Alt+LMB` (conflita com "Emulate 3 Button Mouse"). Keymap editável em Preferences › Keymap (registrado em `addon` keyconfig).
+Teclas evitam `Alt+LMB` (conflita com "Emulate 3 Button Mouse").
+
+## Keymap
+
+- **Ativar a ferramenta: `Shift+Alt+K`** em Pose Mode (`wm.tool_set_by_id`, `name="animation_sculptor.sculpt"`), no keyconfig `addon`, keymap **"Pose"**. Conferido livre no keymap padrão do 5.2 (nenhum item usa Shift+Alt+K). Editável em Preferences › Keymap (buscar "Animation Sculptor" ou `tool_set_by_id`, dentro de Pose).
+- **Keymap da própria ferramenta** (aparece em Preferences › Keymap como "3D View Tool: Pose, Animation Sculptor"): clique = selecionar bone (`view3d.select`, `deselect_all`), Shift+clique = alternar, arrastar em vazio = seleção em caixa. Cliques que acertam um ponto da trail vão para o gizmo/operador de sculpt.
+- **Teclas dentro do gesto são fixas** (modal, não editáveis): roda e `[` `]` (raio), `B` (quebrar tangente), `Shift` (precisão; fator em Preferências), `Esc`/RMB (cancelar), `Enter`/soltar (confirmar), Ctrl/Alt/OS não encerram o gesto.
+- Preferências do usuário (Edit › Preferences › Add-ons › Animation Sculptor, por usuário, fora do `.blend`): raio de clique 12 px, fator de precisão 0,1, sensibilidade do spacing 250 px e retime em trail parada 20 px/frame. Configurações por cena (raio, falloff, escopo, política de spacing, esconder no playback) ficam em `Scene.asc_sculpt` e vão com o arquivo.
+
+## Painéis (3D Viewport › N › Animation Sculptor)
+
+| Painel | Conteúdo |
+|---|---|
+| **Animation Sculptor** (principal) | rig/adapter (`Rig: <nome> (<adapter>)`), bone ativo (conceito + capacidades ou "não é controle"), botão **Ativar ferramenta**/**Ferramenta ativa** (`wm.tool_set_by_id`; só em Pose Mode), botão **Trails** |
+| **Gestos** (filho) | Espaço: raio (frames) e falloff; Tempo (Ctrl+arrastar): escopo (Personagem/Selecionados), política de spacing (Preservar caminho/Preservar suavidade), cor da trail (inclui Speed); "Esconder overlay no playback"; cola dos gestos e do `Shift+Alt+K` |
+| **Breakdown** (filho, fechado por padrão, só em Pose Mode) | operadores nativos `pose.breakdown`, `pose.push`, `pose.relax`, `pose.blend_to_neighbor` nos bones selecionados |
+| **Estatísticas** (filho, fechado por padrão) | último mouse move, pré-cálculo de `P(f)` e frames, refresh ao soltar, alvos/ms/engine das trails |
+| **Trails** (LMP vendorizado) | configurações do Live Motion Path |
 
 ## Linguagem visual
 
@@ -53,7 +70,7 @@ Header da área (`area.header_text_set`) durante o gesto: operação, valores (�
 - Spacing: `Spacing 10→16   saída 75% · chegada 2%   N canal(is) · preservar caminho   (horizontal: favorecer · vertical: ease)` seguido dos atalhos (`preservar suavidade` com a outra política).
 - LMB num key point = grab e num in-between = arc; Ctrl+LMB num key point = retime e num in-between = spacing. Ctrl+LMB recusa com o motivo (sem Action, NLA, influence/blend, nenhuma key nesse frame, segmento LINEAR/CONSTANT, fora do intervalo de keys), como os gestos espaciais.
 - Os gestos de tempo valem para qualquer controle, FK incluído (só tempo; o sculpt espacial de FK é do Escopo 4). Um passo de undo por gesto; Esc/RMB restaura bit a bit (e devolve a cena ao frame original no retime); ao soltar todas as trails são recalculadas (o gesto de tempo muda todos os canais do escopo). Ctrl/Alt/tecla de OS segurados durante o gesto não o encerram (qualquer outra tecla ainda confirma e é repassada).
-- Escopo de timing (`CHARACTER`/`SELECTED`) e política de spacing são, por enquanto, configurações de sessão (`interaction/state.SETTINGS`); a UI vem no PR de painel/preferências/keymap.
+- Escopo de timing (`CHARACTER`/`SELECTED`) e política de spacing são propriedades da cena (`Scene.asc_sculpt`), editáveis no painel "Gestos".
 
 ## Estados
 
@@ -72,7 +89,7 @@ Durante `Dragging`: engine do LMP suspenso (sem frame stepping concorrente), pre
 
 ## Playback e performance percebida
 
-- Playback: overlay de sculpt some; trails seguem a configuração do LMP ("Hide During Playback").
+- Playback: o overlay de sculpt (hover, anéis, preview) **não é desenhado enquanto a animação toca** quando "Esconder overlay no playback" (`Scene.asc_sculpt.hide_on_playback`, padrão ligado) está ativo; as trails seguem a configuração do LMP ("Hide Motion Path During Playback").
 - Feedback a cada mouse move deve custar < 16 ms para um controle com ~200 frames (orçamento a medir; ver [testing/strategy.md](../testing/strategy.md#profiling)).
 
 ## Fora do escopo da Iteração 1 (planejado)

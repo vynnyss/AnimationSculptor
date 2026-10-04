@@ -29,6 +29,10 @@ python scripts/dev.py link
 
 Pergunta ao próprio Blender onde fica o repositório de extensões `user_default` (`bpy.utils.user_resource('EXTENSIONS', path='user_default')`, normalmente `%APPDATA%\Blender Foundation\Blender\5.2\extensions\user_default`) e cria ali uma **junction** (Windows, sem admin) / symlink `animation_sculptor` → `<repo>\animation_sculptor`. Depois: reiniciar o Blender e habilitar "Animation Sculptor" em Edit › Preferences › Add-ons. Editou código ⇒ F3 › "Reload Scripts". `python scripts/dev.py unlink` remove a junction (nunca apaga uma pasta real — se existir uma pasta comum com esse nome, o script se recusa).
 
+## Instalação do zip (M0)
+
+Para testar a instalação como o usuário final (checklist [M0](../testing/manual-tests.md#m0--instalação-5-min)): `python scripts/dev.py build`, depois, no Blender, Edit › Preferences › Get Extensions › ⌄ › Install from Disk… › `dist/animation_sculptor-0.3.0.zip`. Antes, `python scripts/dev.py unlink` e reinicie o Blender, para não misturar com a junction de desenvolvimento. Também dá para instalar sem GUI num perfil limpo: `blender --command extension install-file -r user_default -e dist/animation_sculptor-0.3.0.zip` (e `extension remove animation_sculptor` para desinstalar). O zip contém só `animation_sculptor/` (39 arquivos; sem `tests/` nem `__pycache__`).
+
 ## Comandos (`scripts/dev.py`)
 
 | Comando | Faz | Estado |
@@ -38,7 +42,7 @@ Pergunta ao próprio Blender onde fica o repositório de extensões `user_defaul
 | `test blender [args pytest]` | pytest dentro do Blender em background, **perfil isolado** (`.blender_test_profile/`) | ✅ |
 | `test ui [filtro]` | Blender **com janela** (`--enable-event-simulate`, perfil isolado) rodando os cenários `tests/ui/scenario_*.py` com `Window.event_simulate`; resultados e screenshots em `.blender_test_profile/ui/`. Precisa de display; só local, fora do CI ([detalhes](../testing/blender-tests.md#testes-de-ui-eventos-simulados)) | ✅ |
 | `test all` | unit + blender (não inclui `ui`) | ✅ |
-| `build` | `blender --command extension build` ⇒ `dist/animation_sculptor-<versão>.zip` | ✅ |
+| `build` | `blender --command extension build` ⇒ `dist/animation_sculptor-<versão>.zip` (versão atual **0.3.0**: `dist/animation_sculptor-0.3.0.zip`, o build do Escopo 1) | ✅ |
 | `validate` | regras estáticas (`scripts/checks.py`) + `blender --command extension validate` | ✅ |
 | `fetch-blender` | (CI Linux) baixa o Blender 5.2.x mais recente para `.blender/` | ✅ |
 | `test godot` | e2e export + import headless | Escopo 2 |

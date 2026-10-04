@@ -21,11 +21,14 @@ from ..anim import action_io, spaces
 from ..anim.snapshot import Snapshot
 from ..core import bezier, falloff, sculpt_ops, timing_ops
 from ..trails import provider
+from ..ui import prefs, props
 from . import gizmo, picking, state, timing_edit
 
+
+def _settings():
+    return props.get()
+
 TOOL_ID = "animation_sculptor.sculpt"
-PRECISION = 0.1
-SPACING_PX = 250.0       # mouse pixels for a full favor/ease change of 1.0
 RADIUS_KEYS = {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'LEFT_BRACKET', 'RIGHT_BRACKET'}
 PASSIVE_KEYS = {'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL', 'LEFT_ALT', 'RIGHT_ALT',
                 'OSKEY', 'LEFTMOUSE', 'MIDDLEMOUSE', 'B'} | RADIUS_KEYS
@@ -270,7 +273,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if mode == 'GRAB':
             if not action_io.bone_has_key(ob, pb, frame):
                 return "sem key neste frame"
-            self.edit = _GrabEdit(ob, pb, frame, radius, state.SETTINGS["falloff"])
+            self.edit = _GrabEdit(ob, pb, frame, radius, _settings().falloff if _settings() else "SMOOTH")
             if not self.edit.editable:
                 return "sem key de location editável neste frame"
         else:
@@ -312,7 +315,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if event.ctrl:
             return self._invoke_timing(context, event, hit)
         mode = 'GRAB' if hit.is_key else 'ARC'
-        reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, state.SETTINGS["radius"])
+        settings = _settings()
+        radius = settings.soft_radius if settings is not None else 0.0
+        reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, radius)
         if reason:
             return self._refuse(context, hit, reason)
         self.origin = Vector(hit.world)
@@ -335,8 +340,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
 
     def _invoke_timing(self, context, event, hit):
         mode = 'RETIME' if hit.is_key else 'SPACING'
-        reason = self._begin_timing(context, hit.obj_name, hit.bone, hit.frame, mode,
-                                    state.SETTINGS["timing_scope"], state.SETTINGS["spacing_policy"])
+        settings = _settings()
+        scope = settings.timing_scope if settings is not None else "CHARACTER"
+        policy = settings.spacing_policy if settings is not None else timing_ops.PRESERVE_PATH
+        reason = self._begin_timing(context, hit.obj_name, hit.bone, hit.frame, mode, scope, policy)
         if reason:
             return self._refuse(context, hit, reason)
         self.origin = Vector(hit.world)
@@ -366,10 +373,11 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
 
     def _move_timing(self, context, event):
         mouse = Vector((event.mouse_region_x, event.mouse_region_y))
-        self.mdelta += (mouse - self.last_mouse) * (PRECISION if event.shift else 1.0)
+        self.mdelta += (mouse - self.last_mouse) * (prefs.value("precision") if event.shift else 1.0)
         self.last_mouse = mouse
         if self.edit.kind == "RETIME":
-            frames = timing_ops.retime_frames_from_screen(self.mdelta, self.dir, self.ppf)
+            frames = timing_ops.retime_frames_from_screen(self.mdelta, self.dir, self.ppf,
+                                                          prefs.value("retime_px_per_frame"))
             target = self.frame + frames
             if not event.shift:
                 target = round(target)
@@ -379,8 +387,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                 context.scene.frame_set(frame_int)
             state.GESTURE["label"] = f"{self.frame} → {applied:g}"
         else:
-            favor = self.mdelta.x / SPACING_PX
-            ease = self.mdelta.y / SPACING_PX
+            favor = self.mdelta.x / prefs.value("spacing_px")
+            ease = self.mdelta.y / prefs.value("spacing_px")
             self.edit.apply(favor, ease)
             if self.trail is not None:
                 pts = self.edit.preview(self.trail.frames, self.trail.points)
@@ -457,7 +465,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             depth = self.origin + self.accum
             step = (picking.screen_to_world(region, rv3d, mouse, depth)
                     - picking.screen_to_world(region, rv3d, self.last_mouse, depth))
-            self.accum += step * (PRECISION if event.shift else 1.0)
+            self.accum += step * (prefs.value("precision") if event.shift else 1.0)
             self.last_mouse = mouse
             self._reapply(context)
             state.STATS["last_move_ms"] = (time.perf_counter() - t0) * 1000.0
@@ -465,7 +473,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if self.edit.kind == "GRAB" and event.value == 'PRESS' and event.type in RADIUS_KEYS:
             step = 1.0 if event.type in {'WHEELUPMOUSE', 'RIGHT_BRACKET'} else -1.0
             self.edit.radius = max(0.0, min(500.0, self.edit.radius + step))
-            state.SETTINGS["radius"] = self.edit.radius
+            if _settings() is not None:
+                _settings().soft_radius = self.edit.radius    # remembered in the scene (saved with the file)
             self._reapply(context)
             return {'RUNNING_MODAL'}
         if self.edit.kind == "ARC" and event.type == 'B' and event.value == 'PRESS':
@@ -521,15 +530,39 @@ class ASC_WT_sculpt(bpy.types.WorkSpaceTool):
 
 
 classes = (ASC_OT_sculpt_gesture,)
+TOOL_HOTKEY = {"type": 'K', "value": 'PRESS', "shift": True, "alt": True}   # free in the default keymap (5.2)
+_keymaps = []
+
+
+def _register_keymap():
+    """Shift+Alt+K in Pose Mode activates the tool (editable in Preferences › Keymap › Pose)."""
+    kc = bpy.context.window_manager.keyconfigs.addon
+    if kc is None:          # background mode
+        return
+    km = kc.keymaps.new(name="Pose", space_type='EMPTY')
+    kmi = km.keymap_items.new("wm.tool_set_by_id", **TOOL_HOTKEY)
+    kmi.properties.name = TOOL_ID
+    _keymaps.append((km, kmi))
+
+
+def _unregister_keymap():
+    for km, kmi in _keymaps:
+        try:
+            km.keymap_items.remove(kmi)
+        except Exception:
+            pass
+    _keymaps.clear()
 
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.utils.register_tool(ASC_WT_sculpt, after={"builtin.transform"}, separator=True, group=False)
+    _register_keymap()
 
 
 def unregister():
+    _unregister_keymap()
     try:
         bpy.utils.unregister_tool(ASC_WT_sculpt)
     except Exception as exc:

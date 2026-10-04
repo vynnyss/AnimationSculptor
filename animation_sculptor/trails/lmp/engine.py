@@ -1139,15 +1139,18 @@ def native_bone_paths(arm, bone_names, start, end, point):
 
 
 def _native_points_valid(arm, bone, pts, frame, point):
-    """ASC-PATCH P8: the native path must match the live bone at the current frame (when computed)."""
-    p = pts.get(int(frame))
-    if p is None:
-        return True
+    """ASC-PATCH P8: reject the silent failure of the native solver for bones it cannot see (every point
+    at the origin). Never compare with the live pose: an unkeyed pose edit (G, Breakdowner, Relax…)
+    legitimately differs from the animation the path describes."""
     pb = arm.pose.bones.get(bone)
     if pb is None:
         return False
+    if not pts:
+        return False
+    if any(abs(c) > 1e-9 for p in pts.values() for c in p):
+        return True
     live = _bone_point(pb, arm.matrix_world, point)
-    return sum((a - b) ** 2 for a, b in zip(p, live)) < 1e-6
+    return sum(c * c for c in live) < 1e-12      # the bone really sits at the origin
 
 
 # ---------------------------------------------------------------------------
@@ -1180,6 +1183,42 @@ class StepJob:
         return len(self.pending)
 
 
+_POSE_CHANNELS = ("location", "rotation_quaternion", "rotation_euler", "rotation_axis_angle", "scale")
+
+
+def _save_poses(object_names):
+    """ASC-PATCH P10: {armature name: [(bone, channel values…)]} of the armatures among ``object_names``."""
+    saved = {}
+    for name in object_names:
+        ob = bpy.data.objects.get(name)
+        if ob is None or ob.type != 'ARMATURE' or ob.pose is None:
+            continue
+        saved[name] = [(pb.name, [tuple(getattr(pb, c)) for c in _POSE_CHANNELS]) for pb in ob.pose.bones]
+    return saved
+
+
+def _restore_poses(saved):
+    """ASC-PATCH P10: write the saved pose back where the frame change re-applied the Action. The writes tag
+    the armature; that one update is ours and must not invalidate the trails (see self_tagged, P4)."""
+    for name, bones in saved.items():
+        ob = bpy.data.objects.get(name)
+        if ob is None or ob.pose is None:
+            continue
+        changed = False
+        for bone, values in bones:
+            pb = ob.pose.bones.get(bone)
+            if pb is None:
+                continue
+            for channel, value in zip(_POSE_CHANNELS, values):
+                if tuple(getattr(pb, channel)) != value:
+                    setattr(pb, channel, value)
+                    changed = True
+        if changed:
+            STATE.self_tagged.add(compat.id_key(ob))
+            if ob.data is not None:
+                STATE.self_tagged.add(compat.id_key(ob.data))
+
+
 def _bone_point(pb_eval, mat_world, point):
     if point == 'TAIL':
         v = mat_world @ pb_eval.tail
@@ -1198,6 +1237,10 @@ def run_step_job(job, scene, s, budget):
         return True
     orig_frame = scene.frame_current
     orig_sub = scene.frame_subframe
+    # ASC-PATCH P10: changing frames re-applies the Action to every armature, which would throw away
+    # pose edits the user has not keyed yet (G, Breakdowner, Push, Relax…). Save the current pose of the
+    # armatures involved and put it back after returning to the original frame.
+    saved_poses = _save_poses({key[0] for reqs in job.pending.values() for key, _p, _s in reqs})
     t0 = time.perf_counter()
     use_mod = s.onion_use_modifiers
     limit = s.onion_vertex_limit
@@ -1248,6 +1291,7 @@ def run_step_job(job, scene, s, budget):
             scene.frame_set(orig_frame, subframe=orig_sub)
         except Exception:
             pass
+        _restore_poses(saved_poses)  # ASC-PATCH P10
     return not job.pending
 
 
