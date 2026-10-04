@@ -21,26 +21,42 @@ Conceitos FK (`upper_arm`, `forearm`, `hand`, …) e IK (`hand_ik`, `pole_arm`, 
 
 ## Interface
 
+Implementado em `animation_sculptor/rig/` (`concepts.py`, `adapter.py`, `generic.py`, `rigify.py`; sem `bpy` no nível de módulo, único pacote que conhece nomes de bones). `RigAdapter` é uma classe base; cada adapter é **uma instância por armature** (guarda o nome do objeto) e os métodos que olham o rig recebem o `arm_ob`:
+
 ```python
-class RigAdapter(Protocol):
+class RigAdapter:
     id: str                                   # "rigify", "generic"
     @classmethod
     def detect(cls, arm_ob) -> float          # confiança 0..1; maior vence
     def bone_for(self, concept) -> str | None
     def concept_for(self, bone_name) -> str | None
-    def controls(self) -> list[ControlInfo]   # bones animáveis + capacidades
-    def classify(self, bone_name) -> ControlInfo   # TRANSLATION / ROTATION / ambos, ponto de referência
     def chain(self, concept) -> list[str]     # ex.: hand.L → [upper_arm_fk.L, forearm_fk.L, hand_fk.L]
-    def ik_fk_state(self, limb, frame) -> float   # 0 = IK, 1 = FK (convertido para esta convenção)
-    def deform_bones(self) -> list[str]
+    def ik_fk_state(self, arm_ob, limb) -> float | None   # limb = 'arm.L'/'leg.R'; 0 = IK, 1 = FK; None sem switch
     def is_control(self, bone_name) -> bool   # nunca editar MCH/ORG/DEF
+    def translation_allowed(self, bone_name) -> bool      # veto de translação (cadeias FK)
+    def deform_bones(self, arm_ob) -> list[str]
+    def classify(self, arm_ob, bone_name) -> ControlInfo | None   # None = não é controle
+    def controls(self, arm_ob) -> list[ControlInfo]       # bones animáveis + capacidades
+
+register_adapter(cls)      # decorator; registro na ordem de import
+get_adapter(arm_ob)        # melhor `detect`; cache por (nome do objeto, nome dos dados, rig_id)
+clear_cache()              # chamado no load_post (interaction/__init__.py)
 ```
 
-`ControlInfo`: nome, conceito (opcional), capacidades, eixos livres, ponto de referência sugerido (`HEAD` p/ translação, `TAIL` p/ FK), cor/grupo para UI.
+Diferenças em relação ao rascunho inicial desta página: os métodos `ik_fk_state`, `deform_bones`, `classify` e `controls` recebem o `arm_ob` (o adapter não guarda referência ao objeto); `ik_fk_state` não recebe frame (lê o valor atual da propriedade); existe `translation_allowed`; `classify` devolve `None` para não-controles.
+
+`ControlInfo` (dataclass congelada): `name`, `concept` (opcional), `capabilities` (`frozenset` de `TRANSLATION`/`ROTATION`), `free_axes` (eixos de `location` livres), `reference` (`HEAD` p/ translação, `TAIL` p/ FK) e as propriedades `translates`/`rotates`. Cor/grupo para UI não existem ainda.
+
+Regras de `classify` (na base, valem para todos os adapters):
+- Não controle (`is_control` falso ou bone inexistente) ⇒ `None`.
+- **Bone conectado (`use_connect`) nunca transla**: o Blender ignora a `location` dele, então todos os eixos contam como travados.
+- Eixos livres = `not lock_location`; `translation_allowed` falso zera os eixos.
+- `TRANSLATION` se algum eixo livre; `ROTATION` se a rotação não está toda travada (considera o `lock_rotation_w` em quaternion/axis-angle).
+- Na ferramenta: não controle ⇒ recusa "não é um controle do rig (MCH/ORG/DEF)"; controle sem `TRANSLATION` ⇒ "controle só de rotação: sculpt espacial de FK no Escopo 4 (use tempo: Ctrl+arrastar)". O painel mostra "Rig: <objeto> (<id do adapter>)" e o conceito + capacidades do bone ativo.
 
 ## RigifyAdapter
 
-Detecção: armature com propriedade `rig_id` nos dados (gerada pelo Rigify) e bones `root`, `torso`. Confiança alta só se os nomes esperados existirem.
+Detecção (implementada): armature com `data["rig_id"]` (gerada pelo Rigify); sem `root` e `torso` a confiança é 0,3; com eles, `0,5 + 0,5 × fração dos bones do mapa de conceitos que existem` (o genérico responde 0,1, então o Rigify vence sempre que há `rig_id`).
 
 Mapa padrão (metarig "Human"). ✅ = confirmado em 2026-10-03 no rig Rigify do personagem de teste (`Vale_Rig_Animations.blend`, objeto `rig`, 410 bones, `rig_id = "cuyc5bv7a7800ba6"`, aberto no Blender 5.2.1) — ver [inspeção do rig de teste](#inspeção-do-rig-de-teste-2026-10-03):
 
@@ -65,6 +81,12 @@ Mapa padrão (metarig "Human"). ✅ = confirmado em 2026-10-03 no rig Rigify do 
 | outras props | `IK_Stretch` (0..1), `FK_limb_follow` (0..1), `pole_vector` (bool) em `*_parent`; `rubber_tweak` nos tweaks | — | — |
 | deform | `DEF-*` ✅ (73 bones) | — | — |
 
+Classificação no Rigify: não são controles os bones com prefixo `ORG-`, `MCH-`, `DEF-`, `VIS_` ou `WGT-`; `deform_bones` = bones `DEF-*`; as cadeias (`chain`) são `hand.{L,R}` → upper_arm/forearm/hand FK e `foot.{L,R}` → thigh/shin/foot FK; o switch IK/FK de braço/perna é lido de `IK_FK` em `upper_arm_parent`/`thigh_parent`.
+
+Achados da implementação (2026-10-03, rig gerado + personagem do mantenedor):
+- **Cadeias FK são só de rotação por desenho, embora o Rigify deixe `location` destravada em `upper_arm_fk` e `thigh_fk`** (as raízes das cadeias; `forearm_fk`, `hand_fk` etc. já vêm travados). Mover essas raízes descola o membro do corpo e não é alvo de sculpt, então o `RigifyAdapter.translation_allowed` veta translação em todos os conceitos FK (`upper_arm`, `forearm`, `hand`, `thigh`, `shin`, `foot`), ignorando os locks. Sculpt espacial de FK fica para o Escopo 4.
+- **O rig gerado tem ~114 drivers em propriedades de pose** (props do Rigify, constraints, etc.). Por isso a detecção de espaço constante em [`anim/spaces`](../architecture.md) não pode tratar "existe driver" como "não constante": a regra olha só os drivers/F-Curves que escrevem em ancestrais do bone (por nome do pose bone), além de constraints e animação do objeto.
+
 Observações importantes do Rigify:
 - ✅ Controles principais usam **`rotation_mode = 'QUATERNION'`**; exceções: `shoulder.*`/`breast.*` em `YXZ`, tweaks (`*_tweak*`, `tweak_spine*`), `upper_arm_ik.*`, `thigh_ik.*` e `foot_heel_ik.*` em `ZXY`. O adapter deve ler `rotation_mode` por bone, nunca assumir. Irrelevante para a Iteração 1 (só translação), crítico para FK sculpt (Escopo 4).
 - O espaço de `location` de `hand_ik` depende do *IK parent* (constraint Armature num `MCH-` pai). `P(f)` cobre isso porque é medido no rig avaliado, frame a frame.
@@ -83,10 +105,14 @@ Personagem do usuário (`Vale_Rig_Animations.blend`, local, não versionado), Bl
 
 ## GenericAdapter (fallback)
 
-Sempre disponível com confiança baixa. Qualquer pose bone com F-Curve ou canal livre de `location` é controle de translação; bones com rotação livre são controles de rotação; `deform_bones` = bones com `use_deform`. Sem conceitos. Garante que a Iteração 1 funcione em qualquer armature (e em objetos simples, para testes).
+Implementado (`rig/generic.py`): confiança 0,1 para qualquer armature (portanto fallback). Herda toda a base: todo pose bone é controle; capacidades pelos locks (`location` livre e não conectado ⇒ translação; rotação livre ⇒ rotação); `deform_bones` = bones com `use_deform`; sem conceitos (`concept_for`/`bone_for` vazios). Garante que a Iteração 1 funcione em qualquer armature (e em objetos simples, para testes). Não distingue FK de IK nem mecanismos.
 
 ## Regras
 
-1. O core nunca contém literal de nome de bone. Teste estático em `scripts/dev.py validate` procura por `"DEF-"`, `"_fk."`, `"_ik."` fora de `rig/`.
+1. O core nunca contém literal de nome de bone. Teste estático em `scripts/checks.py` procura por `"DEF-"`, `"_fk."`, `"_ik."` fora de `rig/`.
 2. Adapter não escreve animação; só responde perguntas.
-3. Adapter é escolhido por armature e cacheado; invalidado em `load_post`/troca de rig.
+3. Adapter é escolhido por armature e cacheado por (objeto, dados, `rig_id`); invalidado em `load_post` (`rig.clear_cache()`).
+
+## Testes
+
+`tests/unit/test_rig.py` (11, com armatures falsos, sem Blender): Rigify detectado sobre o genérico, genérico para armature simples, confiança baixa sem `root`/`torso`, ida e volta conceito ⇄ bone, não controles nunca editados, capacidades pelos locks, `IK_FK` e cadeias, `deform_bones`, cache por armature, cadeias FK só de rotação mesmo com `location` livre, bone conectado nunca transla. `tests/blender/test_rig_adapter.py` (4): adapter Rigify no rig gerado (CI) e no personagem (local), genérico em armature simples, recusas do gesto (FK e MCH). Ver [blender-tests](../testing/blender-tests.md).

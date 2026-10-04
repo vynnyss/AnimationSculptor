@@ -2,11 +2,11 @@
 
 > Leia primeiro. Responde "onde estamos" para qualquer sessão/agente nova. Atualizar ao final de cada sessão significativa.
 
-**Última atualização:** 2026-10-03 — `core/bezier` + `core/fcurve_model` (paridade bit a bit com o Blender), `anim/action_io` + `anim/snapshot`, grab migrado, correção das trails após edição nativa (PR `feat/core-bezier-action-io`).
+**Última atualização:** 2026-10-03 — `rig/` (adapters Rigify e genérico, validados contra o rig gerado) e `anim/spaces` (`P(f)` com prefetch e detecção de constante); a tool recusa não-controles e controles só de rotação (branch `feat/spaces-rig-adapters`, empilhada sobre o PR #7).
 
 ## Resumo
 
-Planejamento (PR #1), esqueleto (PR #2), assets de ataque (PR #3), trails com o LMP vendorizado (PR #4), spike de interação (PR #5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado) e os ajustes do grab (PR #6: edição sempre vira keyframe, trail prevista ao vivo, refresh ao soltar) estão na `main`. Em revisão (PR `feat/core-bezier-action-io`): o **`core/` puro** (modelo de canal, avaliação Bézier idêntica à do Blender, `grab_key`), a camada **`anim/`** (`action_io`, `snapshot`) com o grab migrado do spike, a **correção do bug das trails após edição nativa** (G + I, Graph Editor) e o pedido de **Loop** no roadmap. Ainda sem arc drag, retime, spacing, `rig/`.
+Planejamento (PR #1), esqueleto (PR #2), assets de ataque (PR #3), trails com o LMP vendorizado (PR #4), spike de interação (PR #5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado) e os ajustes do grab (PR #6: edição sempre vira keyframe, trail prevista ao vivo, refresh ao soltar) estão na `main`. Em revisão (PR #7, `feat/core-bezier-action-io`): o **`core/` puro** (modelo de canal, avaliação Bézier idêntica à do Blender, `grab_key`), a camada **`anim/`** (`action_io`, `snapshot`) com o grab migrado do spike, a **correção do bug das trails após edição nativa** (G + I, Graph Editor) e o pedido de **Loop** no roadmap. Empilhada sobre o PR #7 (ainda não mergeado), a branch `feat/spaces-rig-adapters` traz o pacote **`rig/`** (adapters, o único lugar que conhece nomes de bones) e o **`anim/spaces.prefetch`** com detecção de espaço constante. Ainda sem arc drag, retime, spacing.
 
 ## O que funciona hoje
 
@@ -27,6 +27,9 @@ Planejamento (PR #1), esqueleto (PR #2), assets de ataque (PR #3), trails com o 
 - **`anim/`**: `action_io` (`channelbag`, `bone_fcurves`, `key_index`, `bone_has_key`, `refusal` — movido de `interaction` —, `read_channel`/`write_channel` com `foreach_get/set`, `ensure_channel` (cria no grupo do bone), `ensure_key`, `tag`) e `snapshot.Snapshot.capture/restore` (bit a bit, inclusive removendo curvas criadas e keys inseridas). O `fcurve.update()` do Blender **mantém** handles `ALIGNED` que escrevemos colineares (testado).
 - **Grab migrado**: `sculpt_tool.py` usa `action_io` + `snapshot` + `core.sculpt_ops`; o preview ao vivo é avaliado com `core.bezier` (vetorizado) em vez de `FCurve.evaluate`; `P(f)` em cache numpy `(N,4,4)`.
 - **Trails após edição nativa (bug corrigido, patch P7)**: G (Move) seguido de I, ou edição no Graph Editor, só atualizava a Action — o update de depsgraph da Action não traz `is_updated_transform`/`is_updated_geometry` e a Action não estava nas dependências do alvo —, então a trail ficava no caminho antigo até o Refresh. `build_deps` agora inclui a Action do objeto e `depsgraph_changed` aceita updates de Action. Regressão: `scenario_native_edit_refresh.py` (G+I duas vezes na Vale: erro 0,154 m antes, 0,0 depois) e `test_trails.py::test_action_update_invalidates_trail`.
+- **`rig/` (sem `bpy`; único pacote que conhece nomes de bones)**: `concepts` (`CONCEPTS`, `TRANSLATION`/`ROTATION`, `ControlInfo`: nome, conceito, capacidades, eixos livres, referência `HEAD`/`TAIL`), `adapter.RigAdapter` (`detect`, `bone_for`, `concept_for`, `chain`, `ik_fk_state(arm_ob, 'arm.L')`, `is_control`, `translation_allowed`, `deform_bones(arm_ob)`, `classify(arm_ob, bone)`, `controls(arm_ob)`; registro + `get_adapter` em cache por (objeto, dados, `rig_id`), `clear_cache` no `load_post`), `generic` (confiança 0,1; qualquer bone, capacidades pelos locks) e `rigify` (detecção por `data["rig_id"]` + `root`/`torso` + fração de bones mapeados; mapa completo de conceitos; não-controles `ORG-`/`MCH-`/`DEF-`/`VIS_`/`WGT-`; cadeias; `IK_FK` em `upper_arm_parent`/`thigh_parent`; `DEF-*` como deform). Regra de base: bone conectado (`use_connect`) nunca transla (o Blender ignora a `location` dele). Detalhes: [rig-adapter](design/rig-adapter.md).
+- **Gesto usa o adapter**: recusa não-controles ("não é um controle do rig (MCH/ORG/DEF)") e controles só de rotação ("controle só de rotação: sculpt espacial de FK no Escopo 4 (use tempo: Ctrl+arrastar)"). O painel mostra "Rig: <nome> (<id do adapter>)" e o conceito + capacidades do bone ativo.
+- **`anim/spaces`**: `prefetch(ob, pb, frames, scene)` → `((N,4,4) numpy, constante)` por frame stepping (devolve a cena ao frame atual) e `is_space_constant(ob, pb)`, conservador: sem constraints no bone, nenhum ancestral animado (F-Curves **ou** drivers, por bone) ou com constraints, nenhuma animação/constraint no objeto do armature nem nos pais. Quando constante, uma única avaliação é reaproveitada. Controles IK do Rigify nunca são constantes (pai `MCH-` com constraint Armature); `root` de um armature sem animação é. O prefetch do grab agora é `spaces.prefetch`.
 - **Loop** (pedido do mantenedor, só roadmap/design nesta branch): parte 1 no Escopo 2 (marcar Action cíclica, "Fechar loop" com última pose = primeira e tangentes casadas, validação, export como loop), parte 2 no Escopo 3 (trail fechada, edição propagada nas pontas). Ver [roadmap](roadmap.md) e [modelo](design/motion-sculpt-model.md).
 
 ## Parcialmente implementado
@@ -41,17 +44,22 @@ Nada conhecido.
 
 - O native solver do LMP precisa de janela: em background/CI o engine é `STEP`. As trails seguem os modos de alvo do LMP (bones selecionados em Pose Mode ou fixados/pinned).
 - A tool só faz **grab** de key point de translação; arc drag, retime, spacing e soft grab ainda não existem. A trail prevista ao vivo é avaliada com `core.bezier` (exata para o controle editado); a trail real só é recalculada ao soltar.
-- O prefetch de `P(f)` (frame stepping, ~0,65 ms/frame) ainda mora em `sculpt_tool.py`; sem detecção de `P` constante. Vai para `anim/spaces` no próximo item.
-- `core/` ainda não tem `falloff`, `timing_ops`, `solve`; não há `rig/` (adapters) nem `pipeline/`.
+- `core/` ainda não tem `falloff`, `timing_ops`, `solve`; não há `pipeline/`. O único adapter de rig além do genérico é o Rigify (metarig Human); o genérico não tem conceitos.
 - Custo medido por mouse move: 0,19 ms só do operador no rig público; o custo de frame completo (reavaliação do Rigify + redesenho) **não** foi medido.
 - Os testes de UI exigem display e não rodam no CI.
 - Iteração 1 esculpe espacialmente só **controles de translação** (IK de mão/pé, poles, torso, root). FK recebe apenas timing/spacing até o Escopo 4.
-- Bones de Rigify não têm avaliação barata no engine do LMP: preview durante o gesto depende de `P(f)` em cache. `location_space` hoje dá `P` só para o frame avaliado atual; para o preview analítico é preciso avançar o frame (frame stepping) — estratégia de prefetch e custo a medir no próximo item.
+- Bones de Rigify não têm avaliação barata no engine do LMP: preview durante o gesto depende de `P(f)` em cache (`spaces.prefetch`, frame stepping; `location_space` continua valendo só para o frame avaliado atual).
 - O LMP upstream não tem testes e foi publicado há ~1 mês; nossos testes cobrem só o que usamos (engine STEP, provider, patches P3/P4). Native solver e desenho só verificados na GUI.
 
 ## Última implementação realizada
 
-**`core/` + `anim/` + correção das trails** (esta branch, `feat/core-bezier-action-io`): ver os itens correspondentes em "O que funciona hoje". Achados que corrigem docs: no Blender 5.2 `BKE_fcurve_correct_bezpart` escala **cada handle independentemente**, só quando aquele handle sozinho ultrapassa o key vizinho no tempo (não a regra "soma dos dois > comprimento"), e o limiar de key exata na avaliação é **0,0001 frame** (não 0,01); a primeira versão do port, escrita de memória, divergia do Blender em até 1,8 com handles sobrepostos — corrigida lendo o fonte 5.2 (ver [blender-5.2-notes](development/blender-5.2-notes.md#avaliação-de-f-curve-fcurvecc)).
+**`rig/` + `anim/spaces`** (esta branch, `feat/spaces-rig-adapters`, empilhada sobre o PR #7): ver os itens correspondentes em "O que funciona hoje". Achados:
+- **Rigify deixa `location` destravada em `upper_arm_fk`/`thigh_fk`** (raízes das cadeias FK), mas mover esses bones descola o membro: o adapter trata todos os conceitos FK como só de rotação (`translation_allowed`), e a ferramenta os recusa até o Escopo 4.
+- **O rig Rigify tem ~114 drivers em propriedades de pose.** A primeira regra de constância ("qualquer driver ⇒ `P` não constante") estava errada: tornava tudo não constante. A regra final olha só ancestrais animados/driven **por bone**, constraints e animação do objeto.
+- **Custo de `P(f)`**: 0,69 ms/frame no `hand_ik.R` do personagem (40 frames; meta < 5 ms) — responde à investigação da agenda.
+- A interface real do adapter difere do rascunho em `design/rig-adapter.md` (métodos recebem `arm_ob`, existe `translation_allowed`, adapters são instâncias por armature); a doc foi corrigida.
+
+Antes (PR #7, `feat/core-bezier-action-io`), **`core/` + `anim/` + correção das trails**: ver os itens correspondentes em "O que funciona hoje". Achados que corrigem docs: no Blender 5.2 `BKE_fcurve_correct_bezpart` escala **cada handle independentemente**, só quando aquele handle sozinho ultrapassa o key vizinho no tempo (não a regra "soma dos dois > comprimento"), e o limiar de key exata na avaliação é **0,0001 frame** (não 0,01); a primeira versão do port, escrita de memória, divergia do Blender em até 1,8 com handles sobrepostos — corrigida lendo o fonte 5.2 (ver [blender-5.2-notes](development/blender-5.2-notes.md#avaliação-de-f-curve-fcurvecc)).
 
 Antes (PR #5, `feat/interaction-spike`), **spike de interação** (agenda item 4, ADR 0010): `interaction/` (tool, gizmo, overlay, picking, estado, operador modal de grab), `anim/spaces.py`, harness de UI (`dev.py test ui`, `tests/ui/`), 23 testes de Blender novos. O ADR 0010 foi validado (opção 3, sem fallback).
 
@@ -71,8 +79,8 @@ Antes: assets de teste de ataque (PR #3; inspeção do rig Rigify em [rig-adapte
 
 | Suite | Passa | Falha | Observação |
 |---|---|---|---|
-| unit | 38 | 0 | CI (pytest, Python 3.13); local Python 3.12. 8 project + 9 `fcurve_model` + 17 `core_bezier` + 4 `sculpt_ops` |
-| blender | 61 | 0 | Windows, Blender 5.2.1, com o asset local gerado. Sem o asset (CI) os testes que dependem dele pulam (`test_attack_asset.py` e parte de `test_trails.py`), o resto passa — inclui paridade Bézier, `action_io`, trails e grab no rig público gerado |
+| unit | 49 | 0 | CI (pytest, Python 3.13); local Python 3.12. 8 project + 9 `fcurve_model` + 17 `core_bezier` + 4 `sculpt_ops` + 11 `rig` (armatures falsos) |
+| blender | 72 | 0 | Windows, Blender 5.2.1, com o asset local gerado. Sem o asset (CI) os testes que dependem dele pulam (`test_attack_asset.py`, parte de `test_trails.py`, o personagem em `test_rig_adapter.py`, o profiling de `test_spaces.py`), o resto passa — inclui paridade Bézier, `action_io`, trails, grab, adapters e `P(f)` no rig público gerado |
 | ui | 27 checagens | 0 | `dev.py test ui` (`scenario_spike.py` 18 + `scenario_release_refresh.py` 6 + `scenario_native_edit_refresh.py` 3), Windows, Blender 5.2.1 com janela; local, não roda no CI |
 | manual | — | — | M0 (instalação) aplicável; verificação visual das trails feita pelo agente via GUI (não substitui o checklist do mantenedor) |
 | godot | — | — | Escopo 2 |
@@ -89,11 +97,11 @@ Antes: assets de teste de ataque (PR #3; inspeção do rig Rigify em [rig-adapte
 
 | Medida | Valor |
 |---|---|
-| Prefetch de `P(f)` no início do grab (40 frames, frame stepping + `convert_space`) | 25,9 ms (≈ 0,65 ms/frame) |
+| Prefetch de `P(f)` (`spaces.prefetch`, `hand_ik.R`, 40 frames, frame stepping + `convert_space`) | 0,69 ms/frame (meta < 5 ms) |
 | Custo por mouse move do grab (escrita + `fcurve.update` + trail prevista), sem reavaliação do Rigify/redesenho | 0,44 ms (meta < 16 ms) |
 | Refresh síncrono da trail ao soltar (native solver) | 43 ms |
 
 ## Próximo objetivo
 
-1. Mantenedor: revisar o PR `feat/core-bezier-action-io` (`test all` + `test ui`; no Blender: mover um controle com G e keyar com I — a trail deve atualizar sem Refresh —, e arrastar um key point com a tool Animation Sculptor como antes).
-2. Próximo item: `anim/spaces` — `P(f)` com prefetch e detecção de `P` constante — + `rig/` adapters Rigify e genérico, validados contra o rig gerado (agenda › Próximo).
+1. Mantenedor: revisar o PR #7 (`feat/core-bezier-action-io`; `test all` + `test ui`; no Blender: mover um controle com G e keyar com I — a trail deve atualizar sem Refresh —, e arrastar um key point com a tool Animation Sculptor como antes), depois a branch `feat/spaces-rig-adapters` (empilhada; no painel, conferir "Rig: … (rigify)" e o conceito do bone ativo; tentar arrastar um key de FK e de um `MCH-`: devem ser recusados com motivo).
+2. Próximo item: **Grab + soft grab + arc drag com preview analítico, recusas com motivo e overlay** (agenda › Próximo).
