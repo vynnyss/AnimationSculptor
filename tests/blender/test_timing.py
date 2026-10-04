@@ -108,3 +108,16 @@ def test_fk_trail_follows_the_bone_tail(public_rig, addon):
     scene.frame_set(12)
     assert (Vector(fk.point_at(12)) - public_rig.matrix_world @ public_rig.pose.bones["upper_arm_fk.R"].tail).length < 1e-5
     assert (Vector(ik.point_at(12)) - public_rig.matrix_world @ public_rig.pose.bones["hand_ik.L"].head).length < 1e-5
+
+
+def test_retime_moves_the_skin_in_time(public_rig):
+    """The skin at the new frame equals the skin at the old frame before the retime (whole pose moved);
+    the neighbouring key poses are unchanged."""
+    import deform_check as dc
+
+    mesh = dc.deformed_mesh(public_rig)
+    before = dc.frames_snapshot(mesh, [1, 12, 24])
+    assert _op(public_rig, "hand_ik.L", 12, mode='RETIME', new_frame=15) == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, [1, 15, 24])
+    assert dc.max_change({15: before[12]}, {15: after[15]}, [15]) < 1e-5
+    assert dc.max_change(before, after, [1, 24]) < 1e-5

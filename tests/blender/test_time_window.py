@@ -95,3 +95,17 @@ def test_palette_sets_past_red_future_green(public_rig, addon):
 def test_tool_has_settings_bar(addon):
     tool = importlib.import_module(addon.__name__ + ".interaction.sculpt_tool").ASC_WT_sculpt
     assert callable(getattr(tool, "draw_settings", None))
+
+
+def test_asymmetric_soft_grab_skin_only_changes_inside_the_window(public_rig):
+    """Past radius 15 reaches key 1 (weight > 0), future radius 0 leaves key 24 alone: on the skin too."""
+    import deform_check as dc
+
+    mesh = dc.deformed_mesh(public_rig)
+    before = dc.frames_snapshot(mesh, [1, 12, 24])
+    assert _gesture(public_rig, "hand_ik.L", 12, (0.0, -0.1, 0.1), mode='GRAB', radius_past=15.0,
+                    radius_future=0.0) == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, [1, 12, 24])
+    assert dc.max_change(before, after, [24]) < 1e-5
+    assert dc.max_change(before, after, [1]) > 1e-3
+    assert dc.max_change(before, after, [12]) > 1e-2
