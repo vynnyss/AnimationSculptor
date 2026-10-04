@@ -12,6 +12,7 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 
+from ..anim import action_io
 from ..core import falloff, ruler
 from ..trails import provider
 from ..trails.lmp import compat
@@ -21,7 +22,8 @@ from . import state
 COLOR_BG = (0.0, 0.0, 0.0, 0.45)
 COLOR_TICK = (1.0, 1.0, 1.0, 0.35)
 COLOR_TICK_MAJOR = (1.0, 1.0, 1.0, 0.7)
-COLOR_KEY = (1.0, 0.9, 0.1, 1.0)
+KEY_PAST = (1.0, 0.45, 0.4)
+KEY_FUTURE = (0.45, 1.0, 0.5)
 WINDOW_ALPHA = (0.12, 0.7)     # alpha of the window at weight 0 / 1
 SAMPLES_PER_SIDE = 48
 
@@ -111,17 +113,24 @@ def _text(x, y, text, color, size_px, center=True):
 
 
 def _key_frames(context):
-    """Key frames of the control being sculpted (or the active pose bone) for the ruler marks."""
-    gesture = state.GESTURE
+    """Key frames (ints) of the control being sculpted, else under hover, else the active pose bone.
+
+    Read from the Action (not the trail, which may be off): union of the bone's F-Curve key frames.
+    """
     ob = context.active_object
-    bone = gesture.get("bone") if gesture else None
-    if bone is None:
-        pb = context.active_pose_bone
-        bone = pb.name if pb is not None else None
-    if ob is None or bone is None:
+    if ob is None or ob.pose is None:
         return ()
-    trail = provider.get_trail(ob, bone)
-    return trail.keyframes if trail is not None else ()
+    name = state.GESTURE.get("bone") if state.GESTURE else None
+    if name is None and state.HOVER is not None and state.HOVER.obj_name == ob.name:
+        name = state.HOVER.bone
+    pb = ob.pose.bones.get(name) if name is not None else context.active_pose_bone
+    if pb is None:
+        return ()
+    frames = set()
+    for fc in action_io.bone_fcurves(ob, pb):
+        for kp in fc.keyframe_points:
+            frames.add(int(round(kp.co.x)))
+    return sorted(frames)
 
 
 def draw(context):
@@ -136,7 +145,7 @@ def draw(context):
     px = lay.px
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     y0, y1 = lay.y, lay.y + lay.height
-    _rects(shader, [(lay.left - 6 * px, y0 - 4 * px, lay.right + 6 * px, y1 + 18 * px)], COLOR_BG)
+    _rects(shader, [(lay.left - 6 * px, y0 - 28 * px, lay.right + 6 * px, y1 + 18 * px)], COLOR_BG)
     _window(lay, rp, rf, s.falloff)
 
     ticks = lay.ticks()
@@ -148,24 +157,40 @@ def draw(context):
         if major and abs(f - lay.f0) * lay.ppf > 18 * px:
             _text(lay.x_of(f), y1 + 4 * px, str(f), (1.0, 1.0, 1.0, 0.6), int(10 * px))
 
-    lo, hi = lay.f0 - lay.half_span, lay.f0 + lay.half_span
-    _rects(shader, [(lay.x_of(f) - 2.5 * px, y0 + lay.height / 2 - 2.5 * px,
-                     lay.x_of(f) + 2.5 * px, y0 + lay.height / 2 + 2.5 * px)
-                    for f in _key_frames(context) if lo <= f <= hi], COLOR_KEY)
+    # Key track: thin line under the strip with a dot per key of the relevant control.
+    ty0, ty1 = y0 - ruler.TRACK_BOTTOM_PX * px, y0 - ruler.TRACK_TOP_PX * px
+    ty = (ty0 + ty1) / 2.0
+    _rects(shader, [(lay.left, ty - 0.5 * px, lay.right, ty + 0.5 * px)], COLOR_TICK)
+    marks = ruler.key_marks(_key_frames(context), lay.f0, lay.f0 - lay.half_span, lay.f0 + lay.half_span)
+    d = 2.5 * px
+    for kind, rgb in ((ruler.PAST, KEY_PAST), (ruler.FUTURE, KEY_FUTURE), ("CURRENT", (1.0, 1.0, 1.0))):
+        _rects(shader, [(lay.x_of(f) - d, ty - d, lay.x_of(f) + d, ty + d) for f, k in marks if k == kind],
+               (*rgb, 1.0))
 
     cx = lay.x_of(lay.f0)
     _rects(shader, [(cx - 1.0 * px, y0 - 3 * px, cx + 1.0 * px, y1 + 3 * px)], (*provider.CURRENT_COLOR, 1.0))
     _text(cx, y1 + 4 * px, str(int(lay.f0)), (1.0, 1.0, 1.0, 1.0), int(11 * px))
 
+    tri_shader = shader
     for side, radius, rgb in ((ruler.PAST, rp, provider.PAST_COLOR), (ruler.FUTURE, rf, provider.FUTURE_COLOR)):
         x = ruler.handle_x(lay, side, rp, rf)
         active = side in (state.RULER_HOVER, state.RULER_DRAG)
-        half = (3.0 if active else 2.0) * px
-        x += (-half if side == ruler.PAST else half)          # coincident handles stay visible side by side
-        _rects(shader, [(x - half, y0 - 5 * px, x + half, y1 + 5 * px)], (*rgb, 1.0 if active else 0.85))
+        half = (1.8 if active else 1.0) * px
+        col = (*rgb, 1.0) if active else (*rgb, 0.85)
+        _rects(shader, [(x - half, y0 - 3 * px, x + half, y1 + 3 * px)], col)
+        tri = ruler.triangle(lay, side, x)
+        if active:                                   # bigger triangle: grow around its vertical edge
+            w = (tri[1][0] - x) * 0.3
+            tri = [(tri[0][0], tri[0][1] + 1.5 * px), (tri[1][0] + w, tri[1][1] - 2 * px),
+                   (tri[2][0], tri[2][1] - 2 * px)]
+        batch = batch_for_shader(tri_shader, 'TRIS', {"pos": tri})
+        tri_shader.bind()
+        tri_shader.uniform_float("color", (min(rgb[0] + 0.25, 1.0), min(rgb[1] + 0.25, 1.0),
+                                           min(rgb[2] + 0.25, 1.0), 1.0) if active else col)
+        batch.draw(tri_shader)
         if radius > 0 or active:
-            label_x = x + (-6 * px if side == ruler.PAST else 6 * px)
+            text = f"{radius:g}"
             blf.size(0, int(10 * px))
-            w, _h = blf.dimensions(0, f"{radius:g}")
-            _text(label_x - (w if side == ruler.PAST else 0.0), y0 - 15 * px, f"{radius:g}", (*rgb, 1.0),
-                  int(10 * px), center=False)
+            w, _h = blf.dimensions(0, text)
+            lx = x + ((-(ruler.TRI_WIDTH_PX + 4) * px - w) if side == ruler.PAST else (ruler.TRI_WIDTH_PX + 4) * px)
+            _text(lx, y0 - 23 * px, text, (*rgb, 1.0), int(10 * px), center=False)

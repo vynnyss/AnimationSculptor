@@ -12,18 +12,27 @@ import math
 from dataclasses import dataclass
 
 MIN_HALF_SPAN = 20          # frames shown on each side of f₀ at least
-MAX_WIDTH_PX = 560.0        # ruler width at UI scale 1
+MAX_WIDTH_PX = 1400.0       # ruler width cap at UI scale 1 (else region width minus the side margins)
 SIDE_MARGIN_PX = 40.0
-BOTTOM_PX = 30.0            # strip bottom above the region bottom
+BOTTOM_PX = 50.0            # strip bottom above the region bottom (room for key track, triangles, labels)
 HEIGHT_PX = 16.0            # strip height
 HANDLE_TOL_PX = 8.0         # horizontal pick tolerance of an end handle
+TRACK_TOP_PX = 3.0          # key track: from this far below the strip ...
+TRACK_BOTTOM_PX = 10.0      # ... to this far below it
+TRI_TOP_PX = 12.0           # end triangles: apex this far below the strip ...
+TRI_BOTTOM_PX = 24.0        # ... base this far below it
+TRI_WIDTH_PX = 7.0          # horizontal extent of a triangle (outward from the handle x)
 NICE_STEPS = (1, 2, 5, 10, 20, 50, 100, 200, 500)
 
 PAST, FUTURE = "PAST", "FUTURE"
 
 
 def half_span_for(radius_past: float, radius_future: float) -> int:
-    """Frames shown on each side of f₀: the window plus 25 %, rounded up to 5, at least MIN_HALF_SPAN."""
+    """Frames shown on each side of f₀: the window plus 25 %, rounded up to 5, at least MIN_HALF_SPAN.
+
+    Deterministic and independent of the ruler width; the wider ruler only raises pixels per frame
+    (width / (2 * half_span), e.g. 35 px per frame at the 1400 px cap with the minimum span of 20).
+    """
     r = max(float(radius_past), float(radius_future), 0.0)
     return max(MIN_HALF_SPAN, int(math.ceil(r * 1.25 / 5.0)) * 5)
 
@@ -89,18 +98,40 @@ def handle_x(lay: Layout, side: str, radius_past: float, radius_future: float) -
     return min(max(lay.x_of(frame), lay.left), lay.right)
 
 
-def hit_handle(lay: Layout, mouse, radius_past: float, radius_future: float) -> str | None:
-    """PAST / FUTURE when ``mouse`` is on an end handle, else None.
+def triangle(lay: Layout, side: str, x: float) -> list:
+    """Vertices of the end triangle of ``side`` below the strip: right triangle whose vertical edge is
+    at the handle x, apex up (towards the strip), base extending outward (PAST left, FUTURE right)."""
+    w = TRI_WIDTH_PX * lay.px
+    xo = x - w if side == PAST else x + w
+    return [(x, lay.y - TRI_TOP_PX * lay.px), (xo, lay.y - TRI_BOTTOM_PX * lay.px),
+            (x, lay.y - TRI_BOTTOM_PX * lay.px)]
 
-    Coincident handles (radius 0 on both sides) are split by the side of the mouse: left = PAST.
+
+def key_marks(keys, f0: float, lo: float, hi: float) -> list:
+    """[(frame, PAST | FUTURE | CURRENT)] of the distinct integer key frames inside [lo, hi], sorted."""
+    out = []
+    for f in sorted({int(round(k)) for k in keys}):
+        if lo <= f <= hi:
+            out.append((f, PAST if f < f0 else FUTURE if f > f0 else "CURRENT"))
+    return out
+
+
+def hit_handle(lay: Layout, mouse, radius_past: float, radius_future: float) -> str | None:
+    """PAST / FUTURE when ``mouse`` is on an end handle (bar or triangle), else None.
+
+    The bar is the handle x ± tolerance across the strip; below the strip the hit area also covers the
+    triangle (extended outward by its width). Coincident handles (radius 0 on both sides) are split by
+    the side of the mouse: left = PAST.
     """
     mx, my = float(mouse[0]), float(mouse[1])
     tol = HANDLE_TOL_PX * lay.px
-    if not (lay.y - tol <= my <= lay.y + lay.height + tol):
+    if not (lay.y - (TRI_BOTTOM_PX + 2.0) * lay.px <= my <= lay.y + lay.height + tol):
         return None
+    ext = TRI_WIDTH_PX * lay.px if my < lay.y else 0.0
     xp = handle_x(lay, PAST, radius_past, radius_future)
     xf = handle_x(lay, FUTURE, radius_past, radius_future)
-    dp, df = abs(mx - xp), abs(mx - xf)
+    dp = max(0.0, (xp - ext) - mx, mx - xp)
+    df = max(0.0, xf - mx, mx - (xf + ext))
     if min(dp, df) > tol:
         return None
     if dp == df:
