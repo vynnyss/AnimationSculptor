@@ -41,9 +41,14 @@
 
 - Escopo 2: pipeline Godot (validação, bake opcional, preset glTF, root motion, teste headless) + **Loop parte 1** (marcar Action cíclica, "Fechar loop", export como loop) — pedido do mantenedor em 2026-10-03.
 - Escopo 3: smooth, make arc, pins, tangent handles, ranges, retime com stretch, **Loop parte 2** (trail fechada, edição propagada nas pontas).
-- Escopo 4: FK sculpt com quaternions, trails IK/FK, snapping Rigify.
+- **UI de tempo** (fase 1 do [rig efêmero](design/ephemeral-rig.md); primeiro PR depois do merge do #11, a partir da `main`): régua de tempo no viewport com raio assimétrico (soft grab), paleta passado vermelho/futuro verde, barra nativa da ferramenta. Pedido do mantenedor em 2026-10-04, inspirado na palestra *Motion Sculpting* (BCON26).
+- Escopo 4: FK pelo **rig efêmero** com keys densas ([ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md), proposto) — fases 2 (`core/kinematics`, `core/ephemeral`, `core/dense`), 3 (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico) e 4 (`Corpo`, pins, arrastar o bone direto); trails IK/FK, snapping Rigify.
 
 ## Investigação
+
+- **Ordem do rig efêmero no roadmap**: hoje ele é o Escopo 4 (substitui o Tangent-Space). Puxar as fases 2–3 para antes do Escopo 2 (pipeline Godot)? Decisão do mantenedor.
+- Custo do preview do gesto efêmero (N frames × IK por mouse move; meta < 16 ms para 200 frames) — medir na fase 2.
+- "Simplificar" regiões densas: `graph.decimate` via `temp_override` ou port do algoritmo.
 
 
 - Confirmar no Blender 5.2 real os itens restantes de [development/blender-5.2-notes.md](development/blender-5.2-notes.md) (nomes de opções glTF). Channelbag/slots/Rigify, gizmo `test_select` e `WorkSpaceTool`: ✅ 2026-10-03.
