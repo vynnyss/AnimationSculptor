@@ -125,7 +125,7 @@ Toda recusa mostra um **anel vermelho** no ponto e `Animation Sculptor · recusa
 3. **Modificador de F-Curve**: no Graph Editor, adicionar um modificador (ex.: Noise) numa curva de `location`; recusa com "F-Curve com modificador".
 4. **Segmento LINEAR**: no Graph Editor, interpolação Linear num segmento (T › Linear); arc drag nesse segmento recusa com "segmento LINEAR" (spacing idem).
 5. **Eixo travado**: em Bone › Transform, travar um eixo de `location` (cadeado); o grab move só nos eixos livres e o arc lista os eixos recusados no header.
-6. **Controle FK de membro em IK**: grab (sem Ctrl) em `hand_fk.R` (braço direito em IK) recusa com "membro em IK…"; Ctrl+arrastar (retime/spacing) funciona. Num membro em FK (`hand_fk.L`) o gesto gira o membro (rig efêmero). Rotação `AXIS_ANGLE` num bone da cadeia: recusa "rotação AXIS_ANGLE não suportada".
+6. **Controle FK de membro em IK**: grab (sem Ctrl) em `hand_fk.R` (braço direito em IK) recusa com "membro em IK…"; Ctrl+arrastar (retime/spacing) funciona. Num membro em FK (`hand_fk.L`) o gesto gira o membro (rig efêmero). Rotação `AXIS_ANGLE` num bone da cadeia: recusa "rotação AXIS_ANGLE não suportada". Escopo **Corpo** arrastando a ponta da `head`: recusa "cadeia não rígida…" (Neck/Head Follow do Rigify).
 7. **Bone MCH/ORG/DEF**: selecionar um bone `MCH-*` (coleções ocultas): "não é um controle do rig (MCH/ORG/DEF)".
 8. **Sem Action / frame sem key**: objeto sem animação: "sem Action (keye a primeira pose com I)"; ponto de um frame sem key de `location`: recusa com o motivo.
 9. Armature não-Rigify simples: o painel mostra o adapter `generic` e o grab funciona.

@@ -233,8 +233,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                                  description="Raio para frente (frames); -1 = usar Raio")
     break_tangent: BoolProperty(name="Quebrar tangente", default=False, options={'SKIP_SAVE'})
     chain_scope: EnumProperty(items=(('SCENE', "Cena", "Use Scene.asc_sculpt.ephemeral_scope"),
-                                     ('LIMB', "Membro", ""), ('TIP', "Ponta", "")),
+                                     ('LIMB', "Membro", ""), ('TIP', "Ponta", ""), ('BODY', "Corpo", "")),
                               default='SCENE', options={'SKIP_SAVE'})
+    from_bone: BoolProperty(default=False, options={'SKIP_SAVE'},
+                            description="The gesture grabs the bone's tail at the current frame (no trail)")
     orientation: EnumProperty(items=(('SCENE', "Cena", "Use Scene.asc_sculpt.tip_orientation"),
                                      ('WORLD', "Mundo", ""), ('LOCAL', "Local", "")),
                               default='SCENE', options={'SKIP_SAVE'})
@@ -277,7 +279,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         info = rig.get_adapter(ob).classify(ob, bone)
         if info is None:
             return "não é um controle do rig (MCH/ORG/DEF)"
-        if not info.translates or mode == 'CHAIN':
+        if not info.translates or mode == 'CHAIN':       # CHAIN: also a translation control dragged by its tail
             return self._begin_chain(ob, obj_name, bone, frame, radii)
         reason = action_io.refusal(ob, pb, "location")
         if reason:
@@ -298,23 +300,34 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         self.obj_name, self.bone, self.frame = obj_name, bone, frame
         return ""
 
-    def _begin_chain(self, ob, obj_name, bone, frame, radii):
-        """Rotation-only control: the ephemeral rig turns its chain (ADR 0011)."""
+    def _scope(self):
         settings = _settings()
-        scope = self.chain_scope if self.chain_scope != 'SCENE' else (
-            settings.ephemeral_scope if settings is not None else rig.LIMB)
+        if self.chain_scope != 'SCENE':
+            return self.chain_scope
+        return settings.ephemeral_scope if settings is not None else rig.LIMB
+
+    def _begin_chain(self, ob, obj_name, bone, frame, radii):
+        """The ephemeral rig turns the control's chain (ADR 0011): rotation-only controls, or any control
+        whose tail is dragged in the Corpo scope."""
+        settings = _settings()
+        scope = self._scope()
         orientation = self.orientation if self.orientation != 'SCENE' else (
             settings.tip_orientation if settings is not None else "WORLD")
-        bones, reason = rig.get_adapter(ob).ephemeral_chain(ob, bone, scope)
+        adapter = rig.get_adapter(ob)
+        bones, reason = adapter.ephemeral_chain(ob, bone, scope)
         if reason:
             return reason
         reason = ephemeral_edit.refusal(ob, bones)
         if reason:
             return reason
+        pins = adapter.ephemeral_pins(ob, bones)[0] if scope == rig.BODY else []
         t0 = time.perf_counter()
         self.edit = ephemeral_edit.ChainEdit(ob, bones, frame, radii[0], radii[1],
-                                             settings.falloff if settings is not None else "SMOOTH", orientation)
+                                             settings.falloff if settings is not None else "SMOOTH", orientation,
+                                             scope=scope, pins=pins)
         state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
+        if self.edit.reason:
+            return self.edit.reason
         if not self.edit.editable:
             return "sem canais de rotação"
         self.obj_name, self.bone, self.frame = obj_name, bone, frame
@@ -359,6 +372,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if event.ctrl:
             return self._invoke_timing(context, event, hit)
         mode = 'GRAB' if hit.is_key else 'ARC'
+        self.from_bone = bool(getattr(hit, "on_bone", False))
+        if self.from_bone:
+            mode = 'CHAIN'
         settings = _settings()
         radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
         reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, radii)
@@ -500,10 +516,14 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             e = self.edit
             frames = e.frames[e.weights > 0.0]
             span = f"{int(frames[0])}–{int(frames[-1])}" if len(frames) else str(self.frame)
-            head = (f"Cadeia FK {' → '.join(e.bones)} @ {self.frame}   {delta}   janela {span} "
+            pinned = f" · pés presos: {len(e.pins)}" if e.pins else ""
+            name = "Corpo" if e.scope == rig.BODY else "Cadeia FK"
+            head = (f"{name} {' → '.join(e.bones)}{pinned} @ {self.frame}   {delta}   janela {span} "
                     f"(←{e.radius_past:g} · {e.radius_future:g}→) · keys em todo frame · roda/[ ]: raio")
             if e.result is not None and not e.result.reached[e.frames == self.frame].all():
                 head += " · fora de alcance"
+            if e.result is not None and e.result.pins_reached is not None and not e.result.pins_reached.all():
+                head += " · pé fora de alcance (perna esticada)"
             context.area.header_text_set(head + "   Shift: precisão · Esc/RMB: cancelar · soltar: confirmar")
             return
         if self.edit.kind == "GRAB":
@@ -566,6 +586,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             return {'RUNNING_MODAL'}
         if event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'RELEASE' or (
                 event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS'):
+            if self.edit.kind in {"GRAB", "ARC", "CHAIN"} and self.accum.length == 0.0:
+                self.edit.restore()                 # a click without a drag writes nothing
+                self._end(context, cancel=True)
+                return {'CANCELLED'}
             self._end(context, cancel=False)
             return {'FINISHED'}
         if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':

@@ -195,3 +195,61 @@ def prefetch_chain(ob, bones, frames, scene):
         finally:
             scene.frame_set(current, subframe=sub)
     return out
+
+
+RIGID_TOL = 1e-5
+_PROBE_ANGLE = 0.3      # radians: test turn applied to each chain bone in turn
+
+
+def _links(ob, pairs):
+    """{(parent, child): inv(pose[parent]) · pose[child] · inv(basis[child])} at the evaluated frame."""
+    import numpy as np
+
+    bones = ob.pose.bones
+    out = {}
+    for parent, child in pairs:
+        pp = np.array(bones[parent].matrix, dtype=np.float64)
+        pc = np.array(bones[child].matrix, dtype=np.float64)
+        bc = np.array(bones[child].matrix_basis, dtype=np.float64)
+        out[(parent, child)] = np.linalg.inv(pp) @ pc @ np.linalg.inv(bc)
+    return out
+
+
+def chain_rigidity(ob, bones, attached=()):
+    """'' when every link of the chain is rigid, else the reason (ADR 0011: the ephemeral solve assumes
+    rigid links between consecutive chain bones and between a chain bone and a pinned limb root).
+
+    Each chain bone is turned a little in turn (at the current frame, live pose) and every link below it
+    is measured again; helpers driven by constraints that blend with other bones (Rigify's spine
+    distribution, Neck/Head Follow) change and are reported. ``attached``: (chain bone, limb root) pairs.
+    The pose is put back exactly; costs one depsgraph update per chain bone."""
+    import numpy as np
+    from mathutils import Matrix
+
+    pairs = list(zip(bones[:-1], bones[1:])) + list(attached)
+    if not pairs:
+        return ""
+    view_layer = __import__("bpy").context.view_layer
+    view_layer.update()
+    rest = _links(ob, pairs)
+    reason = ""
+    with preserve_pose(ob):
+        try:
+            for j, name in enumerate(bones):
+                below = pairs       # a rigid link depends on no chain bone (constraints may reach across)
+                pb = ob.pose.bones[name]
+                saved = pb.matrix_basis.copy()
+                pb.matrix_basis = saved @ Matrix.Rotation(_PROBE_ANGLE, 4, (0.6, 0.0, 0.8))
+                view_layer.update()
+                probe = _links(ob, below)
+                pb.matrix_basis = saved
+                for pair in below:
+                    if np.abs(probe[pair] - rest[pair]).max() > RIGID_TOL:
+                        reason = (f"cadeia não rígida: {pair[1]} não segue {pair[0]} rigidamente "
+                                  "(bone auxiliar com constraint entre eles)")
+                        break
+                if reason:
+                    break
+        finally:
+            view_layer.update()
+    return reason

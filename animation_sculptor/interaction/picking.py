@@ -28,6 +28,7 @@ class Hit:
     world: tuple          # (x, y, z) of the trail point
     screen: tuple         # (x, y) region coordinates
     distance: float       # pixels from the mouse
+    on_bone: bool = False # the bone's tail at the current frame (direct drag), not a trail point
 
 
 def project_points(region, rv3d, points: np.ndarray) -> np.ndarray:
@@ -89,3 +90,29 @@ def hit_test(region, rv3d, mouse, trail_keys, radius=None) -> Hit | None:
                 distance=float(d[i]),
             ))
     return None if best is None else best[1]
+
+
+def bone_tip_hit(region, rv3d, mouse, ob, bones, frame, radius=None) -> Hit | None:
+    """Closest tail (current pose, current frame) of ``bones`` within ``radius`` px: dragging the bone
+    itself, without aiming at its trail (ephemeral rig, phase 4)."""
+    if radius is None:
+        from ..ui import prefs
+
+        radius = float(prefs.value("hit_radius_px"))
+    best = None
+    mx, my = mouse
+    for name in bones:
+        pb = ob.pose.bones.get(name)
+        if pb is None:
+            continue
+        world = ob.matrix_world @ pb.tail
+        co = world_to_screen(region, rv3d, world)
+        if co is None:
+            continue
+        d = float(((co.x - mx) ** 2 + (co.y - my) ** 2) ** 0.5)
+        if d <= radius and (best is None or d < best.distance):
+            from ..anim import action_io
+
+            best = Hit(obj_name=ob.name, bone=name, frame=int(frame), is_key=action_io.bone_has_key(ob, pb, frame),
+                       world=tuple(world), screen=(co.x, co.y), distance=d, on_bone=True)
+    return best

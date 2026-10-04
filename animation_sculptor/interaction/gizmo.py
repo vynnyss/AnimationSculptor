@@ -22,12 +22,40 @@ def candidate_keys(context):
     return [key for key in provider.targets() if key[0] == ob.name and key[1]]
 
 
+def draggable_bones(context):
+    """Selected pose bones whose tail can be dragged directly: rotation-only controls, and in the Corpo
+    scope the controls the adapter turns the body with (``body_override``)."""
+    ob = context.active_object
+    if ob is None or ob.type != 'ARMATURE' or ob.mode != 'POSE':
+        return []
+    from .. import rig
+    from ..ui import props
+
+    settings = props.get(context)
+    body = settings is not None and settings.ephemeral_scope == rig.BODY
+    adapter = rig.get_adapter(ob)
+    out = []
+    for pb in ob.pose.bones:
+        if not pb.select:
+            continue
+        info = adapter.classify(ob, pb.name)
+        if info is None or not info.rotates:
+            continue
+        if not info.translates or (body and adapter.body_override(ob, pb.name)):
+            out.append(pb.name)
+    return out
+
+
 def _header(context, hit):
     area = context.area
     if area is None:
         return
     if hit is None:
         area.header_text_set(None)
+        return
+    if hit.on_bone:
+        area.header_text_set(f"Animation Sculptor · {hit.bone} · ponta do bone, frame {hit.frame}   "
+                             "LMB arrastar: girar a cadeia (janela da régua)")
         return
     kind = "key" if hit.is_key else "in-between"
     area.header_text_set(
@@ -65,6 +93,10 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
             return 0
         try:
             hit = picking.hit_test(context.region, context.region_data, location, candidate_keys(context))
+            if hit is None:     # no trail point: the tail of a selected bone the ephemeral gesture can turn
+                ob = context.active_object
+                hit = picking.bone_tip_hit(context.region, context.region_data, location, ob,
+                                           draggable_bones(context), context.scene.frame_current)
         except Exception as exc:  # never break the viewport event loop
             print(f"[Animation Sculptor] picking failed: {exc}")
             hit = None

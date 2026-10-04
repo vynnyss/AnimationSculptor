@@ -37,7 +37,9 @@ class RigAdapter:
     def deform_bones(self, arm_ob) -> list[str]
     def classify(self, arm_ob, bone_name) -> ControlInfo | None   # None = não é controle
     def controls(self, arm_ob) -> list[ControlInfo]       # bones animáveis + capacidades
-    def ephemeral_chain(self, arm_ob, bone, scope) -> (list[str], str)   # cadeia do rig efêmero (raiz → bone) e motivo de recusa
+    def ephemeral_chain(self, arm_ob, bone, scope) -> (list[str], str)   # cadeia do rig efêmero (raiz → bone) e motivo de recusa; scope TIP/LIMB/BODY
+    def body_override(self, arm_ob, bone) -> bool          # no Corpo, arrastar a ponta deste controle gira o corpo mesmo se ele transla
+    def ephemeral_pins(self, arm_ob, chain) -> (list[(str, list[str])], str)   # membros presos (pés) do Corpo
 
 register_adapter(cls)      # decorator; registro na ordem de import
 get_adapter(arm_ob)        # melhor `detect`; cache por (nome do objeto, nome dos dados, rig_id)
@@ -106,9 +108,9 @@ Personagem do usuário (`Vale_Rig_Animations.blend`, local, não versionado), Bl
 
 ## GenericAdapter (fallback)
 
-Implementado (`rig/generic.py`): confiança 0,1 para qualquer armature (portanto fallback). Herda toda a base: todo pose bone é controle; capacidades pelos locks (`location` livre e não conectado ⇒ translação; rotação livre ⇒ rotação); `deform_bones` = bones com `use_deform`; sem conceitos (`concept_for`/`bone_for` vazios). Garante que a Iteração 1 funcione em qualquer armature (e em objetos simples, para testes). Não distingue FK de IK nem mecanismos. `ephemeral_chain` (base): `TIP` = só o bone; `LIMB` = até 3 bones terminando no arrastado, subindo pela hierarquia enquanto o pai gira, é controle e tem **um único filho** (ramificação encerra o membro) — sem nomes, serve a esqueletos sem control rig (Mixamo).
+Implementado (`rig/generic.py`): confiança 0,1 para qualquer armature (portanto fallback). Herda toda a base: todo pose bone é controle; capacidades pelos locks (`location` livre e não conectado ⇒ translação; rotação livre ⇒ rotação); `deform_bones` = bones com `use_deform`; sem conceitos (`concept_for`/`bone_for` vazios). Garante que a Iteração 1 funcione em qualquer armature (e em objetos simples, para testes). Não distingue FK de IK nem mecanismos. `ephemeral_chain` (base): `TIP` = só o bone; `LIMB` = até 3 bones terminando no arrastado, subindo pela hierarquia enquanto o pai gira, é controle e tem **um único filho** (ramificação encerra o membro) — sem nomes, serve a esqueletos sem control rig (Mixamo). `BODY` = sobe atravessando ramificações (até 8 bones); `ephemeral_pins` (base) = filhos de cadeia única da raiz da cadeia (pernas sob o `Hips`); `body_override` (base) = qualquer controle que gira.
 
-No Rigify, `ephemeral_chain` vem do mapa de conceitos (FK `upper_arm → forearm → hand`, `thigh → shin → foot`), porque `hand_fk`/`foot_fk` são filhos de helpers `MCH-*_fk` e a caminhada pela hierarquia pararia ali; membro com `IK_FK < 0,5` é recusado ("membro em IK: arraste a mão IK ou mude o membro para FK"); controles de rotação que não são de membro (cabeça, pescoço, tórax, ombro…) usam `TIP`.
+No Rigify, `ephemeral_chain` vem do mapa de conceitos (FK `upper_arm → forearm → hand`, `thigh → shin → foot`), porque `hand_fk`/`foot_fk` são filhos de helpers `MCH-*_fk` e a caminhada pela hierarquia pararia ali; membro com `IK_FK < 0,5` é recusado ("membro em IK: arraste a mão IK ou mude o membro para FK"); controles de rotação que não são de membro (cabeça, pescoço, tórax, ombro…) usam `TIP`. `BODY`: `chest` → `torso, chest`; `hips` → `torso, hips`; `neck`/`head` → `torso, chest, neck(, head)` (recusado pela checagem de rigidez: Neck/Head Follow); `body_override` só para `hips`/`chest`/`neck`/`head`; `ephemeral_pins` = pernas em FK (`thigh_fk → shin_fk → foot_fk`), presas ao `torso`.
 
 ## Regras
 

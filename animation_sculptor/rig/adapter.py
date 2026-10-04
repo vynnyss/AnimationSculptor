@@ -9,8 +9,9 @@ from __future__ import annotations
 
 from .concepts import ROTATION, TRANSLATION, ControlInfo
 
-TIP, LIMB = "TIP", "LIMB"      # ephemeral gesture scopes: the bone alone / its limb (design: Ponta / Membro)
+TIP, LIMB, BODY = "TIP", "LIMB", "BODY"   # ephemeral gesture scopes (design: Ponta / Membro / Corpo)
 LIMB_BONES = 3
+BODY_BONES = 8
 
 
 class RigAdapter:
@@ -83,16 +84,42 @@ class RigAdapter:
         if not info.rotates:
             return [], "controle travado (sem rotação livre)"
         chain = [bone_name]
-        if scope == LIMB:
-            pb = arm_ob.pose.bones[bone_name]
-            parent = pb.parent
-            while parent is not None and len(chain) < LIMB_BONES:
+        if scope in (LIMB, BODY):
+            # LIMB stops at a branch (a spine with arms); BODY crosses branches up to the top of the skeleton
+            limit = LIMB_BONES if scope == LIMB else BODY_BONES
+            parent = arm_ob.pose.bones[bone_name].parent
+            while parent is not None and len(chain) < limit:
                 pinfo = self.classify(arm_ob, parent.name)
-                if pinfo is None or not pinfo.rotates or len(parent.children) != 1:
+                if pinfo is None or not pinfo.rotates or (scope == LIMB and len(parent.children) != 1):
                     break
                 chain.insert(0, parent.name)
                 parent = parent.parent
         return chain, ""
+
+    def body_override(self, arm_ob, bone_name: str) -> bool:
+        """In the ``Corpo`` scope, dragging this control's tail turns the body even if it translates."""
+        info = self.classify(arm_ob, bone_name)
+        return info is not None and info.rotates
+
+    def ephemeral_pins(self, arm_ob, chain):
+        """(chain bone, limb bones) whose end stays put while the ``Corpo`` chain turns: the single-child
+        limbs (2–3 bones) hanging from the chain's root that are not on the chain (legs under the hips)."""
+        if not chain:
+            return [], ""
+        root = arm_ob.pose.bones[chain[0]]
+        pins = []
+        for child in root.children:
+            if child.name in chain:
+                continue
+            limb = [child.name]
+            bone = child
+            while len(bone.children) == 1 and len(limb) < LIMB_BONES:
+                bone = bone.children[0]
+                limb.append(bone.name)
+            infos = [self.classify(arm_ob, name) for name in limb]
+            if len(limb) >= 2 and all(i is not None and i.rotates for i in infos):
+                pins.append((chain[0], limb))
+        return pins, ""
 
     def controls(self, arm_ob) -> list:
         out = []

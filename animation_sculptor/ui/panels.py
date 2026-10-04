@@ -100,6 +100,7 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
                      "Pontas da régua: raio passado/futuro (Shift: os dois)",
                      "Arrastar ponto: arco · B: quebrar tangente",
                      "Arrastar trail de FK: gira o membro (keys em todo frame da janela)",
+                     "Arrastar a ponta do bone selecionado: idem, sem a trail (Corpo: coluna)",
                      "Ctrl+losango: retime · Ctrl+ponto: spacing",
                      "Shift: precisão · Esc/RMB: cancelar",
                      "Shift+Alt+K: ativar a ferramenta"):

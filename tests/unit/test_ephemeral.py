@@ -157,3 +157,80 @@ def test_out_of_reach_stretches_without_nan():
     assert np.isfinite(res.tip).all()
     head = chain.world()[:, 0, :3, 3]
     assert np.abs(np.linalg.norm(res.tip - head, axis=1)[F0] - (LENGTHS[0] + LENGTHS[1])) < 1e-9
+
+
+# ------------------------------------------------------------------------------- Corpo: DLS + pins
+def _leg(seed=11):
+    """A 3-bone FK leg (thigh, shin, foot) pointing down, sampled over N frames."""
+    rng = np.random.default_rng(seed)
+    links = np.broadcast_to(np.eye(4), (3, 4, 4)).copy()
+    lengths = np.array([0.45, 0.42, 0.12])
+    links[1, 1, 3], links[2, 1, 3] = lengths[0], lengths[1]
+    rot = []
+    for i in range(3):
+        ang = np.array([np.pi if i == 0 else 0.3 if i == 1 else -0.4, 0.0, 0.0])
+        ang = ang + np.linspace(0, 1, N)[:, None] * rng.normal(size=3) * 0.2
+        rot.append(kin.mat3_to_quat(kin.euler_to_mat3(ang, "XYZ")))
+    base = np.broadcast_to(np.eye(4), (N, 4, 4))
+    return ephemeral.Chain(base, links, lengths, np.zeros((N, 3, 3)), rot, ["QUATERNION"] * 3, np.ones((N, 3, 3)))
+
+
+def _pin(side):
+    rel = np.broadcast_to(np.eye(4), (N, 4, 4)).copy()
+    rel[:, 0, 3] = 0.1 * side          # hip joint beside the chain root's head
+    return ephemeral.Pin(parent=0, rel=rel, limb=_leg(11 if side > 0 else 12))
+
+
+def _feet(chain, rot, pins, pin_rot=None):
+    out = []
+    world = ephemeral.Chain(chain.base, chain.links, chain.lengths, chain.loc, rot, chain.modes, chain.scale).world()
+    for k, pin in enumerate(pins):
+        limb = pin.limb if pin_rot is None else ephemeral.Chain(pin.limb.base, pin.limb.links, pin.limb.lengths,
+                                                                pin.limb.loc, pin_rot[k], pin.limb.modes, pin.limb.scale)
+        w = ephemeral.Chain(world[:, 0] @ pin.rel, limb.links, limb.lengths, limb.loc, limb.rot, limb.modes,
+                            limb.scale).world()
+        out.append(w[:, 2])
+    return out
+
+
+def test_dls_world_keeps_the_last_bone_world_turn_and_reaches():
+    chain = _chain(5)
+    res = ephemeral.sculpt(chain, _weights(), DELTA, orientation=ephemeral.WORLD, solver=ephemeral.DLS)
+    assert np.abs(res.tip - res.target).max() < 1e-6
+    after = ephemeral.Chain(chain.base, chain.links, chain.lengths, chain.loc, res.rot, chain.modes,
+                            chain.scale).world()[:, -1, :3, :3]
+    assert np.abs(after - chain.world()[:, -1, :3, :3]).max() < 1e-9
+
+
+def test_pinned_feet_stay_put_while_the_body_leans():
+    chain = _chain(3, modes=["QUATERNION"] * 3)
+    pins = [_pin(+1), _pin(-1)]
+    before = _feet(chain, chain.rot, pins)
+    res = ephemeral.sculpt(chain, _weights(), np.array([0.0, 0.08, -0.05]), solver=ephemeral.DLS, pins=pins)
+    assert np.abs(res.tip - res.target).max() < 1e-6
+    after = _feet(chain, res.rot, pins, res.pins)
+    moved = _feet(chain, res.rot, pins)                       # feet if the legs were not re-solved
+    for b, a, m in zip(before, after, moved):
+        assert np.abs(a[:, :3, 3] - b[:, :3, 3]).max() < 1e-9          # foot head pinned
+        assert np.abs(a[:, :3, :3] - b[:, :3, :3]).max() < 1e-9        # foot keeps its world turn
+        assert np.abs(m[:, :3, 3] - b[:, :3, 3]).max() > 1e-3          # (the body really moved them)
+
+
+def test_pins_are_bit_identical_on_zero_weight_frames():
+    chain = _chain(3, modes=["QUATERNION"] * 3)
+    pins = [_pin(+1)]
+    w = _weights()
+    res = ephemeral.sculpt(chain, w, DELTA, solver=ephemeral.DLS, pins=pins)
+    out = w == 0.0
+    for new, old in zip(res.pins[0], pins[0].limb.rot):
+        assert np.array_equal(new[out], np.asarray(old)[out])
+
+
+def test_overstretched_pin_is_reported():
+    chain = _chain(3, modes=["QUATERNION"] * 3)
+    pin = _pin(+1)
+    ok = ephemeral.sculpt(chain, _weights(), DELTA, solver=ephemeral.DLS, pins=[pin])
+    assert ok.pins_reached.all()
+    pin.rel[:, 0, 3] = 1.2                # hip joint far from the chain root: turning the root drags it away
+    far = ephemeral.sculpt(chain, _weights(), np.array([0.8, 0.0, 0.0]), solver=ephemeral.DLS, pins=[pin])
+    assert not far.pins_reached[F0] and far.pins_reached[_weights() == 0.0].all()
