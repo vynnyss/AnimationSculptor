@@ -22,7 +22,7 @@ from ..anim.snapshot import Snapshot
 from ..core import bezier, falloff, ruler, sculpt_ops, timing_ops
 from ..trails import provider
 from ..ui import prefs, props
-from . import gizmo, hud, picking, state, timing_edit
+from . import ephemeral_edit, gizmo, hud, picking, state, timing_edit
 
 
 def _settings():
@@ -222,6 +222,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     delta: FloatVectorProperty(size=3, subtype='TRANSLATION', unit='LENGTH', options={'SKIP_SAVE'})
     mode: EnumProperty(items=(('AUTO', "Auto", "Grab on key points, arc drag on in-betweens"),
                               ('GRAB', "Grab", ""), ('ARC', "Arc", ""),
+                              ('CHAIN', "Cadeia FK", "Ephemeral rig on a rotation-only control (dense keys)"),
                               ('RETIME', "Retime", "Move the pose key at frame to new_frame"),
                               ('SPACING', "Spacing", "Ease/favor of the segment around frame")),
                        default='AUTO', options={'SKIP_SAVE'})
@@ -231,6 +232,12 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     radius_future: FloatProperty(name="Raio futuro", min=-1.0, max=500.0, default=-1.0, options={'SKIP_SAVE'},
                                  description="Raio para frente (frames); -1 = usar Raio")
     break_tangent: BoolProperty(name="Quebrar tangente", default=False, options={'SKIP_SAVE'})
+    chain_scope: EnumProperty(items=(('SCENE', "Cena", "Use Scene.asc_sculpt.ephemeral_scope"),
+                                     ('LIMB', "Membro", ""), ('TIP', "Ponta", "")),
+                              default='SCENE', options={'SKIP_SAVE'})
+    orientation: EnumProperty(items=(('SCENE', "Cena", "Use Scene.asc_sculpt.tip_orientation"),
+                                     ('WORLD', "Mundo", ""), ('LOCAL', "Local", "")),
+                              default='SCENE', options={'SKIP_SAVE'})
     new_frame: FloatProperty(options={'SKIP_SAVE'})
     favor: FloatProperty(options={'SKIP_SAVE'})
     ease: FloatProperty(options={'SKIP_SAVE'})
@@ -270,8 +277,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         info = rig.get_adapter(ob).classify(ob, bone)
         if info is None:
             return "não é um controle do rig (MCH/ORG/DEF)"
-        if not info.translates:
-            return "controle só de rotação: sculpt espacial de FK no Escopo 4 (use tempo: Ctrl+arrastar)"
+        if not info.translates or mode == 'CHAIN':
+            return self._begin_chain(ob, obj_name, bone, frame, radii)
         reason = action_io.refusal(ob, pb, "location")
         if reason:
             return reason
@@ -288,6 +295,28 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             self.edit = _ArcEdit(ob, pb, frame)
             if not self.edit.editable:
                 return self.edit.reason()
+        self.obj_name, self.bone, self.frame = obj_name, bone, frame
+        return ""
+
+    def _begin_chain(self, ob, obj_name, bone, frame, radii):
+        """Rotation-only control: the ephemeral rig turns its chain (ADR 0011)."""
+        settings = _settings()
+        scope = self.chain_scope if self.chain_scope != 'SCENE' else (
+            settings.ephemeral_scope if settings is not None else rig.LIMB)
+        orientation = self.orientation if self.orientation != 'SCENE' else (
+            settings.tip_orientation if settings is not None else "WORLD")
+        bones, reason = rig.get_adapter(ob).ephemeral_chain(ob, bone, scope)
+        if reason:
+            return reason
+        reason = ephemeral_edit.refusal(ob, bones)
+        if reason:
+            return reason
+        t0 = time.perf_counter()
+        self.edit = ephemeral_edit.ChainEdit(ob, bones, frame, radii[0], radii[1],
+                                             settings.falloff if settings is not None else "SMOOTH", orientation)
+        state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
+        if not self.edit.editable:
+            return "sem canais de rotação"
         self.obj_name, self.bone, self.frame = obj_name, bone, frame
         return ""
 
@@ -310,7 +339,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if reason:
             self.report({'WARNING'}, f"Animation Sculptor: {reason}")
             return {'CANCELLED'}
-        with provider.suspended(keys=[(self.obj_name, self.bone)]):
+        with provider.suspended(keys=None if self.edit.kind == "CHAIN" else [(self.obj_name, self.bone)]):
             if self.edit.kind == "GRAB" and max(radii) > 0:
                 self.edit.prefetch([])
             if self.edit.kind == "ARC":
@@ -342,7 +371,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         trail = provider.get_trail_by_key((hit.obj_name, hit.bone))
         t0 = time.perf_counter()
         self.edit.prefetch(trail.frames if trail is not None else [])
-        state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
+        if self.edit.kind != "CHAIN":         # the chain sampled its window in _begin_chain
+            state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
         state.STATS["prefetch_frames"] = len(self.edit.trail_frames)
         state.HOVER = None
         state.REFUSAL = None
@@ -423,7 +453,26 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         self.report({'WARNING'}, f"Animation Sculptor: {reason}")
         return {'CANCELLED'}
 
+    @staticmethod
+    def _store_radii(radius_past, radius_future):
+        """Remember the window in the scene (saved with the file); both sides written as they are."""
+        settings = _settings()
+        if settings is None:
+            return
+        linked = settings.radius_linked
+        settings.radius_linked = False
+        settings.radius_past = radius_past
+        settings.radius_future = radius_future
+        settings.radius_linked = linked
+
     def _update_falloff(self):
+        if self.edit.kind == "CHAIN":
+            # rings on the control's key frames inside the window (all frames get keys; these are the poses)
+            trail = provider.get_trail_by_key((self.obj_name, self.bone))
+            keys = set(trail.keyframes) if trail is not None else set()
+            state.GESTURE["falloff"] = [(self.edit.world_at(f), w) for f, w in self.edit.weights_at_keys()
+                                        if f in keys and f != self.frame]
+            return
         if self.edit.kind != "GRAB":
             return
         state.GESTURE["falloff"] = [(self.edit.world_at(f), w) for f, w in self.edit.weights()]
@@ -447,6 +496,16 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             return
         d = self.accum
         delta = f"Δ ({d.x:+.3f}, {d.y:+.3f}, {d.z:+.3f}) m"
+        if self.edit.kind == "CHAIN":
+            e = self.edit
+            frames = e.frames[e.weights > 0.0]
+            span = f"{int(frames[0])}–{int(frames[-1])}" if len(frames) else str(self.frame)
+            head = (f"Cadeia FK {' → '.join(e.bones)} @ {self.frame}   {delta}   janela {span} "
+                    f"(←{e.radius_past:g} · {e.radius_future:g}→) · keys em todo frame · roda/[ ]: raio")
+            if e.result is not None and not e.result.reached[e.frames == self.frame].all():
+                head += " · fora de alcance"
+            context.area.header_text_set(head + "   Shift: precisão · Esc/RMB: cancelar · soltar: confirmar")
+            return
         if self.edit.kind == "GRAB":
             n = len(self.edit.weights())
             head = (f"Grab {self.bone} @ {self.frame}   {delta}   raio ←{self.edit.radius_past:g} · "
@@ -485,18 +544,20 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             self._reapply(context)
             state.STATS["last_move_ms"] = (time.perf_counter() - t0) * 1000.0
             return {'RUNNING_MODAL'}
+        if self.edit.kind == "CHAIN" and event.value == 'PRESS' and event.type in RADIUS_KEYS:
+            step = 1.0 if event.type in {'WHEELUPMOUSE', 'RIGHT_BRACKET'} else -1.0
+            rp = max(0.0, min(500.0, self.edit.radius_past + step))
+            rf = max(0.0, min(500.0, self.edit.radius_future + step))
+            self._store_radii(rp, rf)
+            self.edit.set_radii(rp, rf)           # samples the new window (frame stepping), re-applies the drag
+            self._reapply(context)
+            return {'RUNNING_MODAL'}
         if self.edit.kind == "GRAB" and event.value == 'PRESS' and event.type in RADIUS_KEYS:
             # both sides move by the same step (linked radii stay equal, unlinked keep their difference)
             step = 1.0 if event.type in {'WHEELUPMOUSE', 'RIGHT_BRACKET'} else -1.0
             self.edit.radius_past = max(0.0, min(500.0, self.edit.radius_past + step))
             self.edit.radius_future = max(0.0, min(500.0, self.edit.radius_future + step))
-            settings = _settings()
-            if settings is not None:                          # remembered in the scene (saved with the file)
-                linked = settings.radius_linked
-                settings.radius_linked = False                # write both sides as they are
-                settings.radius_past = self.edit.radius_past
-                settings.radius_future = self.edit.radius_future
-                settings.radius_linked = linked
+            self._store_radii(self.edit.radius_past, self.edit.radius_future)
             self._reapply(context)
             return {'RUNNING_MODAL'}
         if self.edit.kind == "ARC" and event.type == 'B' and event.value == 'PRESS':
@@ -526,7 +587,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         context.area.tag_redraw()
         # cancel restored the F-Curves bit for bit: the cached trail is still the truth. Timing gestures
         # change every channel of the scope, so every trail is recomputed.
-        timing = self.edit.kind in {"RETIME", "SPACING"}
+        timing = self.edit.kind in {"RETIME", "SPACING", "CHAIN"}     # several bones change
         provider.resume(keys=[] if cancel else (None if timing else [(self.obj_name, self.bone)]))
         if not cancel:
             # recompute the edited trail now instead of waiting for the engine's timer
@@ -641,6 +702,8 @@ class ASC_WT_sculpt(bpy.types.WorkSpaceTool):
         row.prop(s, "radius_linked", text="", icon='LINKED' if s.radius_linked else 'UNLINKED')
         row.prop(s, "radius_future", text="Futuro")
         layout.prop(s, "falloff", text="")
+        layout.prop(s, "ephemeral_scope", text="FK")
+        layout.prop(s, "tip_orientation", text="")
         layout.prop(s, "show_time_ruler", text="Régua", icon='TIME')
 
 

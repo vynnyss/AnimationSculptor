@@ -2,7 +2,7 @@
 """Rigify adapter (rig generated from the "Human" metarig). Map validated on Blender 5.2.1 against the
 public generated rig and the maintainer's character (docs/design/rig-adapter.md)."""
 
-from .adapter import RigAdapter, register_adapter
+from .adapter import LIMB, RigAdapter, register_adapter
 from .concepts import SIDES
 
 NON_CONTROL_PREFIXES = ("ORG-", "MCH-", "DEF-", "VIS_", "WGT-")
@@ -62,6 +62,27 @@ class RigifyAdapter(RigAdapter):
         if pb is None or "IK_FK" not in pb:
             return None
         return float(pb["IK_FK"])
+
+    def ephemeral_chain(self, arm_ob, bone_name, scope=LIMB):
+        """FK limbs come from the concept map (``hand_fk`` hangs from a helper, not from ``forearm_fk``, so
+        the hierarchy walk of the base class would stop there); a limb in IK mode is refused."""
+        concept = self.concept_for(bone_name)
+        base, _, side = (concept or "").partition(".")
+        if base not in FK_CONCEPTS:
+            return super().ephemeral_chain(arm_ob, bone_name, "TIP")
+        info = self.classify(arm_ob, bone_name)
+        if info is None or not info.rotates:
+            return [], "controle travado (sem rotação livre)"
+        limb = "arm" if base in ("upper_arm", "forearm", "hand") else "leg"
+        state = self.ik_fk_state(arm_ob, f"{limb}.{side}")
+        if state is not None and state < 0.5:
+            ik = "a mão IK" if limb == "arm" else "o pé IK"
+            return [], f"membro em IK: arraste {ik} ou mude o membro para FK (IK_FK = 1)"
+        if scope != LIMB:
+            return [bone_name], ""
+        links = _CHAINS["hand" if limb == "arm" else "foot"]
+        upto = links[:links.index(base) + 1]
+        return [CONCEPT_TO_BONE[f"{link}.{side}"] for link in upto], ""
 
     def translation_allowed(self, bone_name):
         # FK chain controls rotate; Rigify leaves location unlocked on the chain roots (upper_arm_fk,

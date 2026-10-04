@@ -96,7 +96,7 @@ Curva-guia com pontos de controle aplicada a um trecho de tempo (faixa roxa na r
 
 1. **UI de tempo** (**implementada** — PR `feat/time-ui`, 0.4.0; ver notas abaixo) — régua de tempo no viewport com raio assimétrico (soft grab passa a usá-la), paleta passado/futuro, barra nativa da ferramenta. Independe do solve; melhora já o que existe. *Pronto quando:* soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua, salvos no arquivo; trails vermelho/verde.
 2. **`core/kinematics` + `core/ephemeral` + `core/dense`** (**implementada** — PR `feat/ephemeral-core`; ver notas abaixo) (puro, só testes). *Pronto quando:* FK em numpy bate com o Blender no rig público (< 1e-5 m, teste de Blender); IK de 2 bones atinge o alvo exato dentro do alcance e preserva o plano; escrita densa respeita a invariante de borda; quaternions sem flip.
-3. **Gesto efêmero `Membro`/`Ponta`** nos controles FK do Rigify e no adapter genérico, keys densas na janela, preview, undo/cancel, recusas. *Pronto quando:* swing de espada com braço FK esculpido no viewport (o critério que fechava o Escopo 4).
+3. **Gesto efêmero `Membro`/`Ponta`** (**implementado** — PR `feat/ephemeral-gesture`, 0.5.0; notas abaixo) nos controles FK do Rigify e no adapter genérico, keys densas na janela, preview, undo/cancel, recusas. *Pronto quando:* swing de espada com braço FK esculpido no viewport (o critério que fechava o Escopo 4).
 4. **`Corpo` + pins + arrastar o bone direto** (ponta do bone no frame atual como alvo, sem precisar mirar na trail) + orientação `Local`/`Mundo`.
 
 ### Notas da implementação da fase 1
@@ -113,6 +113,15 @@ Curva-guia com pontos de controle aplicada a um trecho de tempo (faixa roxa na r
 - **Membro (3 bones)**: o IK de 2 bones leva a *cabeça* da mão a `alvo − (cauda − cabeça)`; com orientação `WORLD` a mão recebe `Δ₃ = (Δ₁Δ₂)⁻¹` e a cauda cai exata. Eixo de dobra de reserva (membro reto): eixo X do bone do meio (dobradiça do cotovelo/joelho no Rigify).
 - **Medido** (numpy, 200 frames): 1 bone 1,6 ms, 2 bones 2,6 ms, **3 bones 3,3 ms** (meta < 16 ms por mouse move); DLS com 5 bones 27–70 ms (16 iterações fixas, λ = 0,05 × comprimento, erro por iteração limitado a 0,25 × comprimento) — o `Corpo` vai precisar de preview reduzido (f₀ + amostras) ou de vetorização maior, como previsto em "Riscos".
 - **Escrita densa no Blender**: depois de `write_channel` + `fcurve.update()` a ponta da mão fica fora da janela a < 1e-5 m do que era e dentro dela a < 1e-4 m do alvo (keys float32) — confirma que o `ALIGNED` colinear das bordas sobrevive ao recálculo de handles.
+
+### Notas da implementação da fase 3
+
+- **Cadeia**: `RigAdapter.ephemeral_chain(ob, bone, escopo)` (ver [rig-adapter](rig-adapter.md#genericadapter-fallback)); Rigify pelo mapa de conceitos e recusa de membro em IK; genérico pela hierarquia (pára em ramificação).
+- **Amostragem**: `anim/spaces.prefetch_chain` por frame stepping (com `preserve_pose`): `base`, **links medidos por frame** (`inv(pose[i−1]) · pose[i] · inv(basis[i])`, exatos com helpers como `MCH-hand_fk`), TRS, modos, comprimentos, locks. A janela tem **1 frame de peso 0 a mais de cada lado** (`PAD`): uma F-Curve criada pelo gesto (canal antes sem animação) fica plana fora da janela.
+- **Edição**: `interaction/ephemeral_edit.ChainEdit` (snapshot dos canais de rotação de toda a cadeia; `apply(Δw)` = `core.ephemeral.sculpt` + `core.dense.write_dense` por canal + `action_io.write_channel`; `set_radii` volta às curvas originais, reamostra e reaplica; `preview` troca os frames da janela da trail em cache pela ponta prevista). Recusas: `AXIS_ANGLE`, bone da cadeia com constraint ativa, as de `action_io.refusal` (sem Action, NLA, influence/blend, driver, modificador).
+- **Custo**: a avaliação da curva original nos frames da janela (`dense.current_values`) é cacheada por canal no início — era 80 % do custo. **3,4 ms por mouse move** na Vale (braço FK, janela 11 frames, 12 canais; 12,9 ms antes do cache); cenário de UI 4,3 ms; amostragem da janela 16–27 ms (uma vez por gesto e a cada mudança de raio).
+- Verificado: ponta sob o cursor (0,00 px na UI; < 1 mm nos testes de Blender), nada muda fora da janela (< 1e-5 m), 1 Ctrl+Z desfaz o gesto inteiro, Esc restaura bit a bit, esqueleto sem Rigify (adapter genérico).
+- **Pendente** para a fase 4: `Corpo` + pins, arrastar o bone direto (sem mirar na trail), "Simplificar" a região densa (decidir se entra no Escopo 3 ou 4).
 
 ## Testes (viram critérios)
 

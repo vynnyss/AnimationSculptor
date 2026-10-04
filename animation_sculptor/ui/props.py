@@ -66,6 +66,19 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         description="Mostrar a régua de tempo (janela do soft grab) embaixo do viewport com a ferramenta ativa",
         default=True,
     )
+    ephemeral_scope: EnumProperty(
+        name="Escopo FK",
+        items=(('LIMB', "Membro", "Arrastar a ponta de um controle FK gira o membro inteiro até ele (braço, perna)"),
+               ('TIP', "Ponta", "Arrastar a ponta de um controle FK gira só aquele bone, para apontar")),
+        default='LIMB',
+        description="O que o gesto em controles só de rotação (FK) pode girar",
+    )
+    tip_orientation: EnumProperty(
+        name="Orientação da ponta",
+        items=(('WORLD', "Mundo", "A mão/pé mantém a orientação no mundo (como ao arrastar um controle IK)"),
+               ('LOCAL', "Local", "A mão/pé mantém a rotação local e gira junto com o antebraço/canela")),
+        default='WORLD',
+    )
     palette_applied: BoolProperty(
         name="Paleta aplicada",
         description="A paleta passado/futuro já foi aplicada às trails desta cena (só na primeira vez)",

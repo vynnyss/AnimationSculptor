@@ -2,11 +2,11 @@
 
 > Leia primeiro. Responde "onde estamos" para qualquer sessão/agente nova. Atualizar ao final de cada sessão significativa.
 
-**Última atualização:** 2026-10-04 — **rig efêmero, fase 2** (`core/kinematics`, `core/solve`, `core/ephemeral`, `core/dense`: puro, só testes); branch `feat/ephemeral-core` a partir da `main` com a UI de tempo (#14) mergeada. Versão 0.4.0 (sem mudança visível). Falta o M1 do mantenedor (critério 11 do Escopo 1).
+**Última atualização:** 2026-10-04 — **rig efêmero, fase 3: gesto FK no viewport** (arrastar a trail de um controle FK gira o membro com keys densas na janela da régua); versão **0.5.0**; branch `feat/ephemeral-gesture` a partir da `main` com a fase 2 (#15) mergeada. Falta o M1 do mantenedor (critério 11 do Escopo 1).
 
 ## Resumo
 
-Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Nesta branch (`feat/ephemeral-core`): a **matemática do rig efêmero** (fase 2), sem UI. Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
+Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Também na `main`: a matemática do rig efêmero (fase 2, #15). Nesta branch (`feat/ephemeral-gesture`): o **gesto efêmero** no viewport (fase 3). Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
 
 ## O que funciona hoje
 
@@ -57,7 +57,9 @@ Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com 
   - **Paleta**: `trails/provider.apply_palette` (passado vermelho, futuro verde, frame atual branco, nas trails e no onion skin do LMP, sem patch). Aplicada automaticamente **uma vez por cena** quando a ferramenta liga as trails (`palette_applied`); depois as cores do usuário prevalecem. Botão ao lado de "Cor da trail" no painel Gestos (`asc.apply_palette`) reaplica.
   - **Barra da ferramenta** (`ASC_WT_sculpt.draw_settings`): raio passado · cadeado · raio futuro, falloff, régua. Escopo do gesto efêmero e orientação da ponta entram com o gesto (fase 3).
 
-- **Rig efêmero — matemática (fase 2, `feat/ephemeral-core`)**: `core/kinematics` (quaternion/Euler com continuidade, FK de cadeia com links por elo, IK analítico de 2 bones, aim, atualização local `F⁻¹ΔFR`), `core/solve` (DLS com 16 iterações fixas), `core/ephemeral` (o gesto puro: cadeia + pesos + Δ ⇒ rotações novas por frame; 1/2/3/N bones; mão `WORLD`/`LOCAL`; locks; recusa `AXIS_ANGLE`) e `core/dense` (keys densas com bordas preservadas). Ainda **sem gesto no viewport** (fase 3). Verificado no Blender: FK numpy = depsgraph no braço FK do Rigify (< 1e-5 m) e escrita densa ponta a ponta (alvo < 1e-4 m dentro da janela, nada muda fora). Detalhes: [ephemeral-rig](design/ephemeral-rig.md#notas-da-implementação-da-fase-2).
+- **Rig efêmero — matemática (fase 2, PR #15)**: `core/kinematics` (quaternion/Euler com continuidade, FK de cadeia com links por elo, IK analítico de 2 bones, aim, atualização local `F⁻¹ΔFR`), `core/solve` (DLS com 16 iterações fixas), `core/ephemeral` (o gesto puro: cadeia + pesos + Δ ⇒ rotações novas por frame; 1/2/3/N bones; mão `WORLD`/`LOCAL`; locks; recusa `AXIS_ANGLE`) e `core/dense` (keys densas com bordas preservadas). O gesto no viewport é a fase 3 (abaixo). Verificado no Blender: FK numpy = depsgraph no braço FK do Rigify (< 1e-5 m) e escrita densa ponta a ponta (alvo < 1e-4 m dentro da janela, nada muda fora). Detalhes: [ephemeral-rig](design/ephemeral-rig.md#notas-da-implementação-da-fase-2).
+
+- **Gesto efêmero (fase 3, `feat/ephemeral-gesture`, 0.5.0)**: LMB num ponto qualquer da trail de um **controle só de rotação** (antes recusado) gira a cadeia de `RigAdapter.ephemeral_chain` — `Membro` (padrão: braço/perna até o bone; Rigify pelo mapa de conceitos, genérico pela hierarquia) ou `Ponta` (só o bone) — para a ponta seguir `ponta(f) + w(f)·Δw` em cada frame da janela da régua (raios passado/futuro, falloff), gravando **keys densas** nos canais de rotação (`core.dense`); nada fora da janela muda. Mão/pé `Mundo` (padrão) ou `Local`. Roda/`[ ]` mudam a janela (reamostra). Recusas: membro em IK (Rigify `IK_FK < 0,5`), `AXIS_ANGLE`, bone da cadeia com constraint, e as de sempre (sem Action, NLA…). 1 passo de undo; Esc bit a bit. Configurações `Scene.asc_sculpt.ephemeral_scope`/`tip_orientation` na barra da ferramenta e no painel Gestos. Detalhes: [ephemeral-rig](design/ephemeral-rig.md#notas-da-implementação-da-fase-3).
 
 ## Parcialmente implementado
 
@@ -76,11 +78,18 @@ Nada conhecido.
 - `core/` ainda não tem `solve`; não há `pipeline/`. O único adapter de rig além do genérico é o Rigify (metarig Human); o genérico não tem conceitos.
 - Custo medido por mouse move: 0,19 ms só do operador no rig público; o custo de frame completo (reavaliação do Rigify + redesenho) **não** foi medido.
 - Os testes de UI exigem display e não rodam no CI.
-- Iteração 1 esculpe espacialmente só **controles de translação** (IK de mão/pé, poles, torso, root). FK recebe apenas timing/spacing até o Escopo 4.
+- Controles de translação: grab/soft grab/arc (esparso). Controles só de rotação (FK): gesto efêmero com keys densas (0.5.0) — arc drag e spacing perdem sentido numa região densa; "Simplificar" ainda não existe.
 - Bones de Rigify não têm avaliação barata no engine do LMP: preview durante o gesto depende de `P(f)` em cache (`spaces.prefetch`, frame stepping; `location_space` continua valendo só para o frame avaliado atual).
 - O LMP upstream não tem testes e foi publicado há ~1 mês; nossos testes cobrem só o que usamos (engine STEP, provider, patches P3/P4). Native solver e desenho só verificados na GUI.
 
 ## Última implementação realizada
+
+**Rig efêmero, fase 3 — gesto FK no viewport** (esta branch, `feat/ephemeral-gesture`): ver o item em "O que funciona hoje". Testes novos: `tests/blender/test_ephemeral_gesture.py` (10: ponta da `hand_fk.R` sob o arrasto < 1 mm e nada fora da janela em 3 janelas; keys densas só da key antes à key depois da janela, poses vizinhas e outros bones intactos; membro em IK e `AXIS_ANGLE` recusados; `Ponta` não mexe no braço; `ChainEdit.restore` bit a bit mesmo após `set_radii`; cadeias do adapter; **esqueleto sem Rigify** pelo adapter genérico), `tests/ui/scenario_ephemeral.py` (7 checagens na Vale: gesto `CHAIN` no `hand_fk.L`, Esc bit a bit, ponta sob o cursor 0,00 px, keys densas entre as keys vizinhas da janela, mouse move 4,3 ms, 1 Ctrl+Z desfaz tudo) e `scenario_arc_soft.py` passou a checar a recusa num controle FK de membro **em IK** (`upper_arm_fk.R`). Achados:
+- **80 % do custo por mouse move era reavaliar a curva original** nos frames da janela a cada movimento: agora cacheada por canal (`dense.current_values`) — 12,9 → 3,4 ms.
+- **Canal sem animação + raio 0 de um lado**: a F-Curve criada pelo gesto extrapolaria o valor novo para fora da janela; a janela ganhou 1 frame de peso 0 de cada lado.
+- **Densificação vai até as keys vizinhas**: por desenho (bordas preservadas), a região densa vai da key antes à key depois da janela, não só a janela.
+
+Antes (PR #15, `feat/ephemeral-core`):
 
 **Rig efêmero, fase 2** (esta branch, `feat/ephemeral-core`): ver o item em "O que funciona hoje". Testes novos: `tests/blender/test_ephemeral_core.py` (4: FK numpy = depsgraph no braço FK do Rigify gerado; gesto + `write_dense` em 3 janelas assimétricas: a cauda da `hand_fk.R` vai ao alvo dentro da janela e fica parada fora) e os unitários `test_kinematics.py`, `test_ephemeral.py`, `test_dense.py`. Achados:
 - **`hand_fk` não é filho de `forearm_fk` no Rigify** (passa por `MCH-hand_fk`, com `COPY_SCALE`): o core recebe links por elo em vez de supor a hierarquia; o link de repouso funciona enquanto o helper não tiver pose/escala (a fase 3 deve validar por frame).
@@ -158,8 +167,8 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 | Suite | Passa | Falha | Observação |
 |---|---|---|---|
 | unit | 538 | 0 | CI (pytest, Python 3.13); local Python 3.12. 178 do rig efêmero (`kinematics` 33 funções, `ephemeral` 14, `dense` 8, parametrizadas) + 261 `time_ruler` (`weight_signed`, geometria da régua) + 8 project + 9 `fcurve_model` + 17 `core_bezier` + 4 `sculpt_ops` + 11 `rig` (armatures falsos) + 30 `arc_and_falloff` (arc exato, x/keys intocados, tipos de handle, recusas, formas de falloff) + 20 `timing_ops` (pose keys, retime, limites, `λ` e piso, as duas políticas de spacing, gesto → `λ`, tela → frames) |
-| blender | 115 | 1 | Windows, Blender 5.2.1, com o asset local gerado (inclui `test_soft_grab_arc.py`, o teste do P8, `test_timing.py`, `test_settings_persistence.py`, `test_time_window.py` e `test_ephemeral_core.py`). A falha é `test_original_actions_untouched`: o arquivo original do personagem foi salvo com a Action idle alterada depois de gerar o asset; resolve com `python scripts/dev.py assets` (não é bug do addon). Sem o asset (CI) os testes que dependem dele pulam (`test_attack_asset.py`, parte de `test_trails.py`, o personagem em `test_rig_adapter.py`, o profiling de `test_spaces.py`), o resto passa — inclui paridade Bézier, `action_io`, trails, grab, adapters e `P(f)` no rig público gerado |
-| ui | 68 checagens | 0 | `dev.py test ui` (`scenario_spike.py` 18 + `scenario_release_refresh.py` 6 + `scenario_native_edit_refresh.py` 3 + `scenario_arc_soft.py` 10 + `scenario_timing.py` 10 + `scenario_settings.py` 4 + `scenario_time_ui.py` 13 + `scenario_unkeyed_pose.py` 4), Windows, Blender 5.2.1 com janela; local, não roda no CI |
+| blender | 125 | 1 | Windows, Blender 5.2.1, com o asset local gerado (inclui `test_soft_grab_arc.py`, o teste do P8, `test_timing.py`, `test_settings_persistence.py`, `test_time_window.py`, `test_ephemeral_core.py` e `test_ephemeral_gesture.py`). A falha é `test_original_actions_untouched`: o arquivo original do personagem foi salvo com a Action idle alterada depois de gerar o asset; resolve com `python scripts/dev.py assets` (não é bug do addon). Sem o asset (CI) os testes que dependem dele pulam (`test_attack_asset.py`, parte de `test_trails.py`, o personagem em `test_rig_adapter.py`, o profiling de `test_spaces.py`), o resto passa — inclui paridade Bézier, `action_io`, trails, grab, adapters e `P(f)` no rig público gerado |
+| ui | 75 checagens | 0 | `dev.py test ui` (`scenario_ephemeral.py` 7 + `scenario_spike.py` 18 + `scenario_release_refresh.py` 6 + `scenario_native_edit_refresh.py` 3 + `scenario_arc_soft.py` 10 + `scenario_timing.py` 10 + `scenario_settings.py` 4 + `scenario_time_ui.py` 13 + `scenario_unkeyed_pose.py` 4), Windows, Blender 5.2.1 com janela; local, não roda no CI |
 | manual | — | — | **M0, M1 e M2 pendentes do mantenedor** ([manual-tests](testing/manual-tests.md)); instalação do zip em perfil limpo e verificação visual das trails feitas pelo agente (não substituem o checklist) |
 | godot | — | — | Escopo 2 |
 
@@ -180,10 +189,11 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 | Refresh síncrono da trail ao soltar (native solver) | 43 ms |
 | Custo por mouse move do **soft grab** (passado 3/futuro 10, 2 keys vizinhas, `hand_ik.R`; escrita + `fcurve.update` + trail prevista + anéis de falloff), medido no cenário de UI | 7,6–8,5 ms (meta < 16 ms) |
 | Régua de tempo | desenhada no draw handler (não entra no custo do mouse move); geometria O(frames visíveis) |
+| **Gesto efêmero no viewport** (Vale, `hand_fk.L`, janela 11 frames, 12 canais: solve + keys densas + `write_channel`) | 3,4 ms por mouse move (4,3 ms no cenário de UI); amostragem da janela 16–27 ms por gesto/mudança de raio |
 | Gesto efêmero puro (`core/ephemeral.sculpt`, 200 frames, numpy; sem Blender) | 1 bone 1,6 ms · 2 bones 2,6 ms · **3 bones 3,3 ms** · DLS 5 bones 27–70 ms (meta < 16 ms) |
 
 ## Próximo objetivo
 
-1. **Mantenedor**: revisar o PR da fase 2 (`feat/ephemeral-core`, sem efeito visível); rodar **M0/M1/M2** de [testing/manual-tests.md](testing/manual-tests.md) (critério 11) e **decidir a política de spacing** ⇒ ADR.
-2. **Rig efêmero, fase 3**: gesto `Ponta`/`Membro` no viewport (`RigAdapter.ephemeral_chain`, `anim/spaces.prefetch_chain` com links medidos/validados por frame, `action_io` para canais de rotação, `interaction/ephemeral_edit.ChainEdit`, keys densas na janela da régua, preview, undo/cancel, recusas — membro em IK, `AXIS_ANGLE`), no Rigify e no adapter genérico. Critério: swing de espada com braço FK esculpido no viewport.
-3. Depois: fase 4 (`Corpo`, pins, arrastar o bone direto) e o Escopo 2.
+1. **Mantenedor**: testar o gesto FK (PR `feat/ephemeral-gesture`; roteiro no PR) e, se puder, o critério da fase 3 — **swing de espada com braço FK esculpido no viewport**; rodar **M0/M1/M2** (critério 11 do Escopo 1) e **decidir a política de spacing** ⇒ ADR.
+2. **Rig efêmero, fase 4**: `Corpo` (coluna/raiz com pins nos pés; DLS com preview reduzido), arrastar o bone direto (sem mirar na trail), e decidir onde entra "Simplificar" a região densa.
+3. Depois: Escopo 2 (pipeline Godot + Loop parte 1).

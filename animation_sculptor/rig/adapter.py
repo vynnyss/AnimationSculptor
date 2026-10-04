@@ -9,6 +9,9 @@ from __future__ import annotations
 
 from .concepts import ROTATION, TRANSLATION, ControlInfo
 
+TIP, LIMB = "TIP", "LIMB"      # ephemeral gesture scopes: the bone alone / its limb (design: Ponta / Membro)
+LIMB_BONES = 3
+
 
 class RigAdapter:
     id = "base"
@@ -66,6 +69,30 @@ class RigAdapter:
             caps.add(ROTATION)
         return ControlInfo(name=bone_name, concept=self.concept_for(bone_name), capabilities=frozenset(caps),
                            free_axes=free, reference="HEAD" if TRANSLATION in caps else "TAIL")
+
+    # -- ephemeral rig (ADR 0011) ---------------------------------------------------------------
+    def ephemeral_chain(self, arm_ob, bone_name: str, scope: str = LIMB):
+        """Bones (root → dragged bone) the ephemeral gesture may turn, and a refusal reason ('' when fine).
+
+        ``TIP``: the bone alone (it turns to point at the target). ``LIMB``: up to three bones ending at the
+        dragged one, walking up the hierarchy while each parent rotates, is a control and has this single
+        child (a branch — a spine with arms — ends the limb). No names: works on any skeleton."""
+        info = self.classify(arm_ob, bone_name)
+        if info is None:
+            return [], "não é um controle do rig (MCH/ORG/DEF)"
+        if not info.rotates:
+            return [], "controle travado (sem rotação livre)"
+        chain = [bone_name]
+        if scope == LIMB:
+            pb = arm_ob.pose.bones[bone_name]
+            parent = pb.parent
+            while parent is not None and len(chain) < LIMB_BONES:
+                pinfo = self.classify(arm_ob, parent.name)
+                if pinfo is None or not pinfo.rotates or len(parent.children) != 1:
+                    break
+                chain.insert(0, parent.name)
+                parent = parent.parent
+        return chain, ""
 
     def controls(self, arm_ob) -> list:
         out = []

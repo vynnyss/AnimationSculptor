@@ -140,3 +140,58 @@ class preserve_pose:
                 if tuple(getattr(pb, channel)) != value:
                     setattr(pb, channel, value)
         return False
+
+
+ROTATION_CHANNEL = {"QUATERNION": "rotation_quaternion", "AXIS_ANGLE": "rotation_axis_angle"}
+
+
+def rotation_channel(pb):
+    """(data path channel, size) of the rotation values a pose bone's mode uses."""
+    channel = ROTATION_CHANNEL.get(pb.rotation_mode, "rotation_euler")
+    return channel, 3 if channel == "rotation_euler" else 4
+
+
+def prefetch_chain(ob, bones, frames, scene):
+    """Everything the ephemeral gesture needs about an FK chain at each frame, by frame stepping
+    (ADR 0011, docs/design/ephemeral-rig.md): a dict with
+
+    - ``base`` (N, 4, 4): world matrix of the root's parent space (``world[0] = base · basis[0]``);
+    - ``links`` (N, K, 4, 4): rigid transform from bone i−1 to bone i's parent space, measured per frame
+      (``inv(pose[i−1]) · pose[i] · inv(basis[i])``) — exact also when a helper bone sits in between
+      (Rigify's ``MCH-hand_fk``);
+    - ``loc``/``scale`` (N, K, 3), ``rot`` (K arrays (N, 4|3)), ``modes``, ``lengths`` (K,), ``locks`` (K, 3).
+
+    The live (unkeyed) pose is kept (``preserve_pose``) and the scene returns to its current frame.
+    """
+    import numpy as np
+
+    frames = [int(f) for f in frames]
+    pbs = [ob.pose.bones[b] for b in bones]
+    n, k = len(frames), len(pbs)
+    modes = [pb.rotation_mode for pb in pbs]
+    channels = [rotation_channel(pb) for pb in pbs]
+    out = {
+        "base": np.empty((n, 4, 4)), "links": np.broadcast_to(np.eye(4), (n, k, 4, 4)).copy(),
+        "loc": np.empty((n, k, 3)), "scale": np.empty((n, k, 3)),
+        "rot": [np.empty((n, size)) for _channel, size in channels], "modes": modes,
+        "lengths": np.array([pb.bone.length for pb in pbs], dtype=np.float64),
+        "locks": np.array([tuple(pb.lock_rotation) for pb in pbs], dtype=bool),
+    }
+    mw = np.array(ob.matrix_world, dtype=np.float64)
+    current, sub = scene.frame_current, scene.frame_subframe
+    with preserve_pose(ob):
+        try:
+            for fi, f in enumerate(frames):
+                scene.frame_set(f)
+                pose = [np.array(pb.matrix, dtype=np.float64) for pb in pbs]
+                basis_inv = [np.linalg.inv(np.array(pb.matrix_basis, dtype=np.float64)) for pb in pbs]
+                out["base"][fi] = mw @ pose[0] @ basis_inv[0]
+                for i, pb in enumerate(pbs):
+                    if i:
+                        out["links"][fi, i] = np.linalg.inv(pose[i - 1]) @ pose[i] @ basis_inv[i]
+                    out["loc"][fi, i] = pb.location
+                    out["scale"][fi, i] = pb.scale
+                    out["rot"][i][fi] = getattr(pb, channels[i][0])
+        finally:
+            scene.frame_set(current, subframe=sub)
+    return out

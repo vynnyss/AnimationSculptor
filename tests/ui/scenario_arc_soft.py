@@ -24,7 +24,8 @@ def _keys(rig):
 
 def scenario(h):
     if ASSET.exists():
-        path, bone, fk_bone, key_frame, mid_frame = str(ASSET), "hand_ik.R", "upper_arm_fk.L", 18, 13
+        # an FK control of the IK (right) arm: refused since 0.5.0 ("membro em IK"); the FK left arm sculpts
+        path, bone, fk_bone, key_frame, mid_frame = str(ASSET), "hand_ik.R", "upper_arm_fk.R", 18, 13
     else:
         path, bone, fk_bone, key_frame, mid_frame = os.environ["ASC_UI_RIG"], "hand_ik.L", "upper_arm_fk.R", 12, 6
     bpy.ops.wm.open_mainfile(filepath=path, load_ui=False)
@@ -122,7 +123,9 @@ def scenario(h):
         return p2 is not None and 20 < p2.x < region.width - 20 and 20 < p2.y < region.height - 20
 
     fk_key = next((f for f in fk_trail.keyframes if fk_trail.point_at(f) is not None and inside(f)), None)
-    h.check("an FK key point is visible", fk_key is not None)
+    if fk_key is None:      # an unkeyed FK control of an IK limb: any visible point of its trail
+        fk_key = next((int(f) for f in fk_trail.frames if inside(int(f))), None)
+    h.check("an FK trail point is visible", fk_key is not None)
     if fk_key is None:
         return
     co = win(fk_trail.point_at(fk_key))
@@ -135,7 +138,7 @@ def scenario(h):
     h.event('LEFTMOUSE', 'RELEASE', co)
     yield 0.3
     refusal = state.REFUSAL
-    h.check("FK key refused with a reason", refusal is not None and "rotação" in refusal["reason"],
+    h.check("FK control of an IK limb refused with a reason", refusal is not None and "IK" in refusal["reason"],
             refusal and refusal["reason"])
     h.check("refusal changes nothing", _keys(rig) == keys)
     h.screenshot("3-refusal")

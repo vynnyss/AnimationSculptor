@@ -47,6 +47,8 @@ Testes existentes:
 
 `scenario_time_ui.py` (13 checagens; asset da Vale quando existe, senão rig público): ativar a ferramenta aplica a paleta (passado vermelho, futuro verde); a régua de tempo tem layout no viewport; hover na ponta direita escolhe o futuro; arrastar 10 frames muda só o raio do futuro; 1 Ctrl+Z desfaz e Ctrl+Shift+Z refaz; arrastar a ponta esquerda muda só o passado; Esc restaura; soft grab assimétrico (passado 3, futuro 10, frame 18) move as keys 16 e 26 e não 1/10/40; mouse move < 16 ms. Cuidados aprendidos: soltar `LEFT_SHIFT`/`LEFT_CTRL` com eventos explícitos depois de atalhos com modificador (o estado do modificador simulado persiste) e re-buscar dados de ID (`bpy.context.scene…`, objetos) depois de undo/redo (referências antigas derrubam o Blender).
 
+Rig efêmero (fase 3): `test_ephemeral_gesture.py` — gesto pelo operador (`mode` `AUTO`/`CHAIN`, `chain_scope`, `orientation`) no braço FK do Rigify gerado (`IK_FK = 1`) e num armature simples sem Rigify (adapter genérico); `scenario_ephemeral.py` (UI, Vale `hand_fk.L`).
+
 Rig efêmero (fase 2): `test_ephemeral_core.py` — FK numpy (links de repouso, base por frame stepping) = matrizes de pose do Blender no braço FK do Rigify gerado (< 1e-5 m), e o gesto puro gravado com `core/dense` + `action_io` move a cauda da `hand_fk.R` para o alvo dentro da janela (< 1e-4 m) sem mudar nada fora (< 1e-5 m), em 3 janelas assimétricas. Unit: `test_kinematics.py`, `test_ephemeral.py`, `test_dense.py`.
 
 Testes de Blender da UI de tempo: `test_time_window.py` (soft grab assimétrico, raios ligados, `asc.time_window`, paleta, barra da ferramenta) e `test_settings_persistence.py::test_file_from_0_3_0_opens_with_both_radii_equal` (migração). Unit: `tests/unit/test_time_ruler.py`.
