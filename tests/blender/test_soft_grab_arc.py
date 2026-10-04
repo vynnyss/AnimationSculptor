@@ -75,3 +75,20 @@ def test_radius_zero_is_plain_grab(public_rig):
     other = _head(public_rig, "hand_ik.L", 24)
     _gesture(public_rig, "hand_ik.L", 12, (0.1, 0.1, 0.1), mode='GRAB', radius=0.0)
     assert (_head(public_rig, "hand_ik.L", 24) - other).length < 1e-6
+
+
+def test_arc_drag_on_the_skin(public_rig):
+    """Arc drag: the skin at the key frames is unchanged; at the dragged in-between the hand part moved by
+    the drag (rigid hand; measured 1e-4 m, tolerance 3e-4)."""
+    import deform_check as dc
+
+    mesh = dc.deformed_mesh(public_rig)
+    idx = dc.part(mesh, "DEF-hand.L")
+    before = dc.frames_snapshot(mesh, [1, 6, 12, 24])
+    delta = Vector((0.06, -0.04, 0.05))
+    assert _gesture(public_rig, "hand_ik.L", 6, delta, mode='ARC') == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, [1, 6, 12, 24])
+    assert dc.max_change(before, after, [1, 12, 24]) < 1e-5
+    shift = after[6][idx] - before[6][idx]
+    print(f"arc hand skin max err {abs(shift - delta).max():.2e}")
+    assert abs(shift - delta).max() < 3e-4

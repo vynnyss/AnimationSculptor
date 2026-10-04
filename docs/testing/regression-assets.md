@@ -41,6 +41,7 @@ Ataque com espada (mão direita), 24 fps, frames 1–40, markers na timeline:
 | 40 | `recovery` | volta à guarda, com o pé esquerdo à frente |
 
 - Canais (todos Bézier, handles `AUTO_CLAMPED`, keys em todos os 6 frames): `root`, `torso` (loc+quat), `chest`, `head` (quat), `hand_ik.R` (loc+quat), `upper_arm_ik_target.R` (loc), `foot_ik.L/R` (loc+quat), `thigh_ik_target.L/R` (loc), `upper_arm_fk.L`, `forearm_fk.L`, `hand_fk.L` (quat).
+- **Malhas do personagem visíveis** (gerador v2, 2026-10-04: os testes e o mantenedor veem a deformação, não só o rig); widgets, outras armatures e coleções escondidas no render ficam escondidos. O rig público gerado em teste tem um corpo simples pesado (`tests/blender/body_mesh.py`).
 - `IK_FK` keyado (CONSTANT, frame 1): braço direito **IK** (0), braço esquerdo **FK** (1), pernas IK. Assim há controles FK com efeito visível; `hand_ik.L` não é keyado (inativo).
 - `root` é keyado mas constante (sem root motion por enquanto).
 - Valores literais no script; quaternions com sinal contínuo entre keys (caminho curto). As poses foram autoradas como intenções em espaço de mundo (posição da mão, direção da lâmina, yaw/pitch do torso, cabeça olhando o alvo em (0, −3, 1.3)), convertidas uma vez para valores locais e conferidas por render (frames-chave e intermediários).

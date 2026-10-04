@@ -24,6 +24,7 @@ def scenario(h):
     else:
         path, bones, frame = os.environ["ASC_UI_RIG"], ("hand_ik.L", "torso"), 6
     bpy.ops.wm.open_mainfile(filepath=path, load_ui=False)
+    bpy.context.scene.asc_sculpt.interaction_mode = 'TRAIL'     # trail gestures (ADR 0013: Corpo is the default)
     yield 0.5
     provider = h.addon("trails.provider")
     engine = h.addon("trails.lmp.engine")

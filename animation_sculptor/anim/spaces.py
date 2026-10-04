@@ -123,11 +123,15 @@ class preserve_pose:
     """Context manager: frame stepping re-applies the Action and would discard pose edits that are not
     keyed yet; the current pose of ``ob`` is put back on exit."""
 
-    def __init__(self, ob):
+    def __init__(self, ob, skip=()):
+        """``skip``: bones whose pose is NOT put back (a gesture that just wrote their curves wants the
+        evaluated Action there, not the values from before its own write)."""
         self.ob = ob
+        self.skip = set(skip)
 
     def __enter__(self):
-        self.saved = [(pb.name, [tuple(getattr(pb, c)) for c in _POSE_CHANNELS]) for pb in self.ob.pose.bones]
+        self.saved = [(pb.name, [tuple(getattr(pb, c)) for c in _POSE_CHANNELS]) for pb in self.ob.pose.bones
+                      if pb.name not in self.skip]
         return self
 
     def __exit__(self, *exc):
@@ -151,7 +155,7 @@ def rotation_channel(pb):
     return channel, 3 if channel == "rotation_euler" else 4
 
 
-def prefetch_chain(ob, bones, frames, scene):
+def prefetch_chain(ob, bones, frames, scene, extra=()):
     """Everything the ephemeral gesture needs about an FK chain at each frame, by frame stepping
     (ADR 0011, docs/design/ephemeral-rig.md): a dict with
 
@@ -160,6 +164,9 @@ def prefetch_chain(ob, bones, frames, scene):
       (``inv(pose[i−1]) · pose[i] · inv(basis[i])``) — exact also when a helper bone sits in between
       (Rigify's ``MCH-hand_fk``);
     - ``loc``/``scale`` (N, K, 3), ``rot`` (K arrays (N, 4|3)), ``modes``, ``lengths`` (K,), ``locks`` (K, 3).
+
+    ``extra``: other bones whose world matrices (N, 4, 4) are also sampled (``out["extra"][name]``), e.g.
+    the bone a grabbed point belongs to when it is not the chain's last bone.
 
     The live (unkeyed) pose is kept (``preserve_pose``) and the scene returns to its current frame.
     """
@@ -176,6 +183,7 @@ def prefetch_chain(ob, bones, frames, scene):
         "rot": [np.empty((n, size)) for _channel, size in channels], "modes": modes,
         "lengths": np.array([pb.bone.length for pb in pbs], dtype=np.float64),
         "locks": np.array([tuple(pb.lock_rotation) for pb in pbs], dtype=bool),
+        "extra": {name: np.empty((n, 4, 4)) for name in extra},
     }
     mw = np.array(ob.matrix_world, dtype=np.float64)
     current, sub = scene.frame_current, scene.frame_subframe
@@ -192,6 +200,8 @@ def prefetch_chain(ob, bones, frames, scene):
                     out["loc"][fi, i] = pb.location
                     out["scale"][fi, i] = pb.scale
                     out["rot"][i][fi] = getattr(pb, channels[i][0])
+                for name in extra:
+                    out["extra"][name][fi] = mw @ np.array(ob.pose.bones[name].matrix, dtype=np.float64)
         finally:
             scene.frame_set(current, subframe=sub)
     return out

@@ -9,7 +9,7 @@ operator (``target_set_operator``). Drawing of the hover ring lives in ``overlay
 import bpy
 
 from ..trails import provider
-from . import hud, picking, state
+from . import body_pick, hud, picking, state
 
 GESTURE_OPERATOR = "asc.sculpt_gesture"
 
@@ -22,6 +22,33 @@ def candidate_keys(context):
     return [key for key in provider.targets() if key[0] == ob.name and key[1]]
 
 
+def _mode(context):
+    from ..ui import props
+
+    settings = props.get(context)
+    return settings.interaction_mode if settings is not None else 'TRAIL'
+
+
+def body_hit(context, location):
+    """Modo Corpo: the body spot under the mouse, mapped to the control that moves it (ADR 0013)."""
+    ob = context.active_object
+    if ob is None or ob.type != 'ARMATURE' or ob.mode != 'POSE':
+        return None
+    spot = body_pick.pick(context, context.region, context.region_data, location, ob)
+    if spot is None:
+        return None
+    from .. import rig
+    from ..anim import action_io
+
+    control, kind, reason = rig.get_adapter(ob).control_for_deform(ob, spot.deform)
+    frame = context.scene.frame_current
+    pb = ob.pose.bones.get(control) if control else None
+    return picking.Hit(obj_name=ob.name, bone=control or spot.deform, frame=frame,
+                       is_key=bool(pb is not None and action_io.bone_has_key(ob, pb, frame)), world=spot.world,
+                       screen=(float(location[0]), float(location[1])), distance=0.0, on_body=True,
+                       deform=spot.deform, kind=kind or "", mesh=spot.mesh, reason=reason, face=spot.face)
+
+
 def draggable_bones(context):
     """Selected pose bones whose tail can be dragged directly: rotation-only controls, and in the Corpo
     scope the controls the adapter turns the body with (``body_override``)."""
@@ -31,8 +58,11 @@ def draggable_bones(context):
     from .. import rig
     from ..ui import props
 
+    from .sculpt_tool import TOOL_SCOPES, active_tool_id
+
     settings = props.get(context)
-    body = settings is not None and settings.ephemeral_scope == rig.BODY
+    scope = TOOL_SCOPES.get(active_tool_id(context)) or (settings.ephemeral_scope if settings is not None else None)
+    body = scope == rig.BODY
     adapter = rig.get_adapter(ob)
     out = []
     for pb in ob.pose.bones:
@@ -52,6 +82,14 @@ def _header(context, hit):
         return
     if hit is None:
         area.header_text_set(None)
+        return
+    if hit.on_body:
+        if hit.reason:
+            area.header_text_set(f"Animation Sculptor · {hit.deform} · {hit.reason}")
+            return
+        what = "grab/arco do controle IK" if hit.kind == "IK" else "gira a cadeia (keys em todo frame da janela)"
+        area.header_text_set(f"Animation Sculptor · {hit.deform} → {hit.bone} · frame {hit.frame}   "
+                             f"LMB arrastar: {what}")
         return
     if hit.on_bone:
         area.header_text_set(f"Animation Sculptor · {hit.bone} · ponta do bone, frame {hit.frame}   "
@@ -92,8 +130,11 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
                 "LMB arrastar: mudar · Shift: os dois lados")
             return 0
         try:
-            hit = picking.hit_test(context.region, context.region_data, location, candidate_keys(context))
-            if hit is None:     # no trail point: the tail of a selected bone the ephemeral gesture can turn
+            if _mode(context) == 'BODY':
+                hit = body_hit(context, location)
+            else:
+                hit = picking.hit_test(context.region, context.region_data, location, candidate_keys(context))
+            if hit is None:     # nothing else: the tail of a selected bone the ephemeral gesture can turn
                 ob = context.active_object
                 hit = picking.bone_tip_hit(context.region, context.region_data, location, ob,
                                            draggable_bones(context), context.scene.frame_current)
@@ -114,13 +155,13 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
 
 
 def _tool_active(context) -> bool:
-    from .sculpt_tool import TOOL_ID
+    from .sculpt_tool import TOOL_IDS
 
     try:
         tool = context.workspace.tools.from_space_view3d_mode(context.mode, create=False)
     except Exception:
         return False
-    return tool is not None and tool.idname == TOOL_ID
+    return tool is not None and tool.idname in TOOL_IDS
 
 
 class ASC_GGT_trails(bpy.types.GizmoGroup):
@@ -145,7 +186,11 @@ class ASC_GGT_trails(bpy.types.GizmoGroup):
         def enable_trails():
             scene = bpy.data.scenes.get(scene_name)
             if scene is not None:
-                provider.set_enabled(scene, True)
+                sculpt_settings = getattr(scene, "asc_sculpt", None)
+                if sculpt_settings is None:
+                    provider.set_enabled(scene, True)
+                elif sculpt_settings.interaction_mode == 'TRAIL' and sculpt_settings.show_trails:
+                    provider.set_paths(scene, True)       # the Corpo mode keeps the viewport clean
                 sculpt = getattr(scene, "asc_sculpt", None)
                 if sculpt is not None and not sculpt.palette_applied:   # once per scene: user colours win after
                     provider.apply_palette(scene)

@@ -40,6 +40,7 @@ def scenario(h):
         path, side, f0 = os.environ["ASC_UI_RIG"], "R", 12
     bone = f"hand_fk.{side}"
     bpy.ops.wm.open_mainfile(filepath=path, load_ui=False)
+    bpy.context.scene.asc_sculpt.interaction_mode = 'TRAIL'     # trail gestures (ADR 0013: Corpo is the default)
     yield 0.5
     provider = h.addon("trails.provider")
     picking = h.addon("interaction.picking")

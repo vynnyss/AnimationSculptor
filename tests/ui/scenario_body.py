@@ -30,6 +30,7 @@ def scenario(h):
     else:
         path, fk_side, f0 = os.environ["ASC_UI_RIG"], "R", 12
     bpy.ops.wm.open_mainfile(filepath=path, load_ui=False)
+    bpy.context.scene.asc_sculpt.interaction_mode = 'TRAIL'     # trail gestures (ADR 0013: Corpo is the default)
     yield 0.5
     provider = h.addon("trails.provider")
     picking = h.addon("interaction.picking")
@@ -79,7 +80,8 @@ def scenario(h):
 
     # --- Corpo: drag the chest by its tail ------------------------------------------------------------
     s = bpy.context.scene.asc_sculpt
-    s.ephemeral_scope = 'BODY'
+    with h.override():
+        bpy.ops.wm.tool_set_by_id(name="animation_sculptor.body")       # the Corpo tool sets the scope
     for pb in rig.pose.bones:
         pb.select = pb.name == "chest"
     rig.data.bones.active = rig.data.bones["chest"]

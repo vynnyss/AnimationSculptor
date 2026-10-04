@@ -29,6 +29,7 @@ def scenario(h):  # noqa: C901
     else:
         path, bone, other, key_frame, mid_frame = os.environ["ASC_UI_RIG"], "hand_ik.L", "torso", 12, 18
     bpy.ops.wm.open_mainfile(filepath=path, load_ui=False)
+    bpy.context.scene.asc_sculpt.interaction_mode = 'TRAIL'     # trail gestures (ADR 0013: Corpo is the default)
     yield 0.5
     provider = h.addon("trails.provider")
     picking = h.addon("interaction.picking")
@@ -97,6 +98,7 @@ def scenario(h):  # noqa: C901
     rig = bpy.data.objects[rig_name]
     scene = bpy.context.scene
     h.check("one Ctrl+Z undoes the retime", _keys(rig) == keys0)
+    scene.asc_sculpt.interaction_mode = 'TRAIL'     # set from Python (no undo step): the undo reverted it
 
     # --- spacing: Ctrl+drag an in-between sideways ---------------------------------------------------
     # (the selection was made from Python without an undo step, so the undo dropped it: select again)

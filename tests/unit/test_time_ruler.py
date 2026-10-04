@@ -171,7 +171,15 @@ def test_layout_geometry(w, px):
 
 def test_layout_width_capped():
     lay = _lay(w=5000.0)
-    assert lay.width == ruler.MAX_WIDTH_PX
+    assert lay.width == ruler.MAX_WIDTH_PX == 1400.0
+
+
+def test_layout_width_fills_region_minus_margins():
+    lay = _lay(w=1000.0, px=1.0)
+    assert lay.width == 1000.0 - 2 * ruler.SIDE_MARGIN_PX
+    lay = _lay(w=2000.0, px=2.0)
+    assert lay.width == 2000.0 - 2 * ruler.SIDE_MARGIN_PX * 2.0
+    assert _lay(w=5000.0, px=2.0).width == 2800.0
 
 
 @pytest.mark.parametrize("frame", [-50.0, 0.0, 60.0, 100.0, 123.456, 500.0])
@@ -260,7 +268,8 @@ def test_hit_handle_none_when_far(px):
     assert ruler.hit_handle(lay, (xp - tol * 1.5, ymid), rp, rf) is None
     assert ruler.hit_handle(lay, (xf + tol * 1.5, ymid), rp, rf) is None
     # vertical: outside strip +- tolerance
-    assert ruler.hit_handle(lay, (xp, lay.y - tol * 1.5), rp, rf) is None
+    below = lay.y - (ruler.TRI_BOTTOM_PX + 6.0) * px
+    assert ruler.hit_handle(lay, (xp, below), rp, rf) is None
     assert ruler.hit_handle(lay, (xf, lay.y + lay.height + tol * 1.5), rp, rf) is None
     # vertical: inside tolerance band still hits
     assert ruler.hit_handle(lay, (xp, lay.y - tol * 0.9), rp, rf) == PAST
@@ -343,3 +352,54 @@ def test_radius_round_trip_inside_ruler(side, radius, px):
     x = ruler.handle_x(lay, side, rp, rf)
     assert ruler.radius_from_x(lay, side, x) == radius
     assert ruler.radius_from_x(lay, side, x, snap=False) == pytest.approx(radius)
+
+
+# ---------------------------------------------------------------- ruler v2: triangles, key marks
+
+@pytest.mark.parametrize("px", [1.0, 2.0])
+def test_triangle_geometry(px):
+    lay = _lay(w=2000.0, px=px)
+    x = lay.cx + 50.0
+    for side, sign in ((PAST, -1.0), (FUTURE, 1.0)):
+        apex, outer, inner = ruler.triangle(lay, side, x)
+        assert apex[0] == inner[0] == x
+        assert apex[1] > inner[1] == outer[1]
+        assert apex[1] < lay.y                       # entirely below the strip
+        assert (outer[0] - x) * sign == pytest.approx(ruler.TRI_WIDTH_PX * px)
+
+
+@pytest.mark.parametrize("px", [1.0, 2.0])
+def test_hit_handle_covers_triangle(px):
+    lay = _lay(w=2000.0, px=px)
+    rp, rf = 10, 25
+    for side, sign in ((PAST, -1.0), (FUTURE, 1.0)):
+        x = ruler.handle_x(lay, side, rp, rf)
+        _a, outer, inner = ruler.triangle(lay, side, x)
+        # the outer base corner and the base centre are on the handle
+        assert ruler.hit_handle(lay, (outer[0], outer[1] + 0.5 * px), rp, rf) == side
+        assert ruler.hit_handle(lay, ((outer[0] + inner[0]) / 2, inner[1] + 0.5 * px), rp, rf) == side
+        # the same x inside the strip (no triangle there) is beyond the bar tolerance
+        far = x + sign * (ruler.HANDLE_TOL_PX + ruler.TRI_WIDTH_PX) * px
+        assert ruler.hit_handle(lay, (far, lay.y + lay.height / 2), rp, rf) is None
+
+
+def test_hit_handle_triangles_of_coincident_handles_split():
+    lay = _lay()
+    y = lay.y - ruler.TRI_BOTTOM_PX * 0.8
+    assert ruler.hit_handle(lay, (lay.cx - 4.0, y), 0, 0) == PAST
+    assert ruler.hit_handle(lay, (lay.cx + 4.0, y), 0, 0) == FUTURE
+
+
+def test_key_marks_classify_dedupe_and_clip():
+    marks = ruler.key_marks([10, 10.2, 5, 20, 100, 14, -50], 10.0, 0.0, 30.0)
+    assert marks == [(5, PAST), (10, "CURRENT"), (14, FUTURE), (20, FUTURE)]
+    assert ruler.key_marks([], 1.0, 0.0, 10.0) == []
+
+
+def test_wide_ruler_shows_more_frames():
+    from animation_sculptor.core import ruler as r
+    w = r.ruler_width(2000.0, 1.0)
+    hs = r.half_span_for_width(0.0, 0.0, w, 1.0)
+    assert hs % 5 == 0 and hs >= r.MIN_HALF_SPAN
+    assert w / (2.0 * hs) <= r.TARGET_PX_PER_FRAME + 1e-9
+    assert r.half_span_for_width(200.0, 0.0, w, 1.0) >= r.half_span_for(200.0, 0.0)

@@ -12,6 +12,7 @@ from .concepts import ROTATION, TRANSLATION, ControlInfo
 TIP, LIMB, BODY = "TIP", "LIMB", "BODY"   # ephemeral gesture scopes (design: Ponta / Membro / Corpo)
 LIMB_BONES = 3
 BODY_BONES = 8
+CHAIN, IK = "CHAIN", "IK"     # how a grabbed body part is sculpted: ephemeral rig / grab-arc of an IK control
 
 
 class RigAdapter:
@@ -100,6 +101,18 @@ class RigAdapter:
         """In the ``Corpo`` scope, dragging this control's tail turns the body even if it translates."""
         info = self.classify(arm_ob, bone_name)
         return info is not None and info.rotates
+
+    def control_for_deform(self, arm_ob, deform_bone: str):
+        """(control, kind, reason) for a body part grabbed on the mesh (ADR 0013): the control that moves
+        that part. Generic skeletons (Mixamo) are animated on the deform bones themselves: the bone, CHAIN."""
+        info = self.classify(arm_ob, deform_bone)
+        if info is None or not info.rotates:
+            return None, None, f"{deform_bone}: parte sem controle (bone travado ou não é controle)"
+        return deform_bone, CHAIN, ""
+
+    def ephemeral_aim(self, arm_ob, bone_name: str, scope: str):
+        """Bones aimed after the chain moved (decision 10), root first, ending at the dragged one; [] = none."""
+        return []
 
     def ephemeral_pins(self, arm_ob, chain):
         """(chain bone, limb bones) whose end stays put while the ``Corpo`` chain turns: the single-child

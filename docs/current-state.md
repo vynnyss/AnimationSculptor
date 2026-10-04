@@ -2,11 +2,11 @@
 
 > Leia primeiro. Responde "onde estamos" para qualquer sessão/agente nova. Atualizar ao final de cada sessão significativa.
 
-**Última atualização:** 2026-10-04 — #16 e #17 mergeados (rig efêmero completo, 0.6.0). Branch `docs/ux-reform-plan` (só documentação): **plano da reforma de UX** decidido com o mantenedor — [ADR 0013](decisions/0013-body-and-trail-interaction.md) (modos Corpo/Trail, ferramentas na lateral, Rigify escondido), [ADR 0012](decisions/0012-spacing-policy-preserve-path.md) (spacing `PRESERVE_PATH`), [design/sculpt-ux.md](design/sculpt-ux.md).
+**Última atualização:** 2026-10-04 — **reforma de UX completa** (0.7.0; branch `feat/ux-reform`, um PR só por pedido do mantenedor): modos Corpo/Trail, ferramentas Ponta/Membro/Corpo/Smooth na barra lateral, agarrar o corpo pela malha com realce, pescoço/cabeça do Rigify em duas etapas, Smooth, régua v2, onion skin normal/expandido, painel N limpo; testes conferem a deformação da malha. Plano: [ADR 0013](decisions/0013-body-and-trail-interaction.md), [design/sculpt-ux.md](design/sculpt-ux.md).
 
 ## Resumo
 
-Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Também na `main`: a matemática do rig efêmero (fase 2, #15). Também na `main`: o **gesto efêmero** no viewport (fase 3, #16) e a **fase 4** (`Corpo`, pins, arrastar o bone direto, rigidez; #17). Nesta branch: o plano da **reforma de UX** (só docs). Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
+Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Também na `main`: a matemática do rig efêmero (fase 2, #15). Também na `main`: o **gesto efêmero** no viewport (fase 3, #16) e a **fase 4** (`Corpo`, pins, arrastar o bone direto, rigidez; #17). Também na `main`: o plano da reforma de UX (#18). Nesta branch (`feat/ux-reform`): a **reforma de UX inteira**. Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
 
 ## O que funciona hoje
 
@@ -14,7 +14,7 @@ Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com 
 - `scripts/dev.py`: `link`/`unlink`, `test unit|blender|ui|all`, `build`, `validate`, `fetch-blender`. `test ui` abre um Blender com janela e roda cenários com eventos simulados (local, precisa de display; ver [blender-tests](testing/blender-tests.md#testes-de-ui-eventos-simulados)).
 - `scripts/checks.py`: regras estáticas (core sem bpy, nomes de bones só em `rig/`, manifest, links da documentação).
 - CI no GitHub verde: job `unit` (pytest real) e job `blender` (baixa o Blender 5.2.x, roda os testes de Blender — smoke + trails no rig público gerado — e `extension validate`).
-- `python scripts/dev.py assets [--preview]`: gera `tests/assets/local/attack_test.blend` (gitignored) a partir do personagem configurado em `scripts/.dev.toml` (`character = '...'`) ou `ASC_TEST_CHARACTER`. Só o control rig visível; Action `asc_test_attack` (slot `OBrig`, key poses 1/10/16/18/26/40: idle → anticipation → attack → impact → follow-through → recovery; braço direito IK com a espada, braço esquerdo FK). Detalhes: [regression-assets](testing/regression-assets.md).
+- `python scripts/dev.py assets [--preview]`: gera `tests/assets/local/attack_test.blend` (gitignored) a partir do personagem configurado em `scripts/.dev.toml` (`character = '...'`) ou `ASC_TEST_CHARACTER`. Malhas do personagem visíveis (gerador v2); Action `asc_test_attack` (slot `OBrig`, key poses 1/10/16/18/26/40: idle → anticipation → attack → impact → follow-through → recovery; braço direito IK com a espada, braço esquerdo FK). Detalhes: [regression-assets](testing/regression-assets.md).
 - `tests/blender/test_attack_asset.py` (11 testes) — pulam quando o asset não existe (caso do CI).
 - **Trails** (`animation_sculptor/trails/`): `lmp/` é o Live Motion Path vendorizado (namespace `Scene.asc_trails`, classes `ASC_TR_*`, operadores `asc_trails.*`; patches P1–P5, P7 e P8, sem P6) e `provider.py` é a façade: `Trail` (dataclass: `obj_name`, `bone`, `frames` int32, `points` float32 em mundo, `keyframes`, `complete`, `engine`, `point_at(frame)`), `settings/is_enabled/set_enabled/key_for/get_trail/targets/update_now/refresh/invalidate/suspend/resume/is_suspended`, context manager `suspended()` e `stats()`. O painel principal tem o toggle "Mostrar trails" (`scene.asc_trails.enabled`); os painéis do LMP ficam aninhados como "Trails"; onion skin desligado por padrão.
 - Rig público de teste gerado em tempo de teste por `tests/blender/public_rig.py` (metarig Human → `pose.rigify_generate` num Blender de fundo separado, ~6 s, uma vez por sessão), com Action `asc_public_test` ([regression-assets](testing/regression-assets.md)). Nenhum binário no repo; roda no CI.
@@ -63,6 +63,17 @@ Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com 
 
 - **Fase 4 do rig efêmero (PR #17, 0.6.0)**: escopo **`Corpo`** (a coluna gira por mínimos quadrados para a ponta arrastada seguir o mouse; pernas FK presas, pés parados; pernas IK do Rigify já ficam presas pelo rig), **arrastar a ponta do bone direto** (sem mirar na trail; no `Corpo` também `chest`/`hips`/`neck`/`head`), **validação de rigidez** da cadeia no início do gesto (recusa cadeias com bones auxiliares que não seguem rígido — no Rigify: `neck`/`head` por Neck/Head Follow, `hips` com pernas FK) e **clique sem arrasto não escreve nada**. Header `Corpo torso → chest @ 16 … · pés presos: N`, aviso de pé fora de alcance. Detalhes: [ephemeral-rig](design/ephemeral-rig.md#notas-da-implementação-da-fase-4).
 
+- **Reforma de UX (0.7.0, `feat/ux-reform`)** — ver [sculpt-ux](design/sculpt-ux.md#notas-da-implementação-070):
+  - **Ferramentas na barra lateral** (Pose Mode, depois de Transform): **Ponta**, **Membro** (id antigo `animation_sculptor.sculpt`), **Corpo**, **Smooth**; o escopo do gesto vem da ferramenta; `Shift+Alt+K` volta à última usada.
+  - **Modos** (painel N, `interaction_mode`): **Corpo** (padrão) — passar o mouse na malha realça a parte em azul; arrastar esculpe a pose no frame atual: membro em FK / esqueleto puro → rig efêmero (keys densas na janela da régua; o ponto da **pele** agarrado segue o cursor, medido na malha deformada ao soltar), membro em IK → grab/arco do controle IK (antebraço/mão → `hand_ik`, braço → pole), tronco → Corpo; **Trail** — os gestos da 0.6.0 na trajetória (grab/arco/retime/spacing; trocar para Trail liga as trails).
+  - **Pescoço/cabeça do Rigify na ferramenta Corpo** (decisão 10): inclina torso+chest, aponta pescoço e cabeça, medido no rig (cabeça 0,00 mm, pescoço 0,78 mm no rig gerado).
+  - **Smooth**: pincel temporal (8 px = 1 passe gaussiano; força e largura nos Parâmetros) nos canais animados do controle da parte, só dentro da janela.
+  - **Painel N limpo**: modo + toggles **Trails · Ligar Rigify · Onion skin · Onion expandida**; Parâmetros, Breakdown, Estatísticas e Trails (LMP) fechados.
+  - **Ligar Rigify** desligado esconde os bones/controles (overlay); a animação continua nos controles.
+  - **Régua v2**: largura útil do viewport (até 1400 px), ~12 px por frame, frames, triângulos nas pontas, faixa de keys (passado vermelho, futuro verde, frame atual branco).
+  - **Onion skin**: toggle com os frames da janela da régua (`core/onion`), e **expandido** (fantasmas espalhados na horizontal da vista; patch P11 do LMP).
+  - **Testes veem a malha**: asset local v2 com as malhas da Vale visíveis; rig público com corpo pesado (`tests/blender/body_mesh.py`); `deform_check.py` confere a pele em grab, arco, retime, FK, Corpo, soft grab assimétrico, gesto pelo corpo e Smooth.
+
 ## Parcialmente implementado
 
 Nada.
@@ -85,6 +96,23 @@ Nada conhecido.
 - O LMP upstream não tem testes e foi publicado há ~1 mês; nossos testes cobrem só o que usamos (engine STEP, provider, patches P3/P4). Native solver e desenho só verificados na GUI.
 
 ## Última implementação realizada
+
+**Reforma de UX** (esta branch, `feat/ux-reform`; um PR só). Feita com agentes: régua v2, onion skin + P11 e `core/smooth` em worktrees isolados (integrados e revisados), dois agentes de teste (Blender: deformação da malha em todos os gestos + `test_ux_reform.py`; UI: `scenario_body_grab`, `scenario_smooth`, `scenario_tools`, `scenario_onion`) e uma revisão de código. Achados:
+- **A coluna/pele do Rigify não é rígida com o controle**: um vértice da pele mistura vários bones (`DEF-spine.002/.003`, breast…). O gesto pelo corpo mede o **ponto da pele** na malha deformada ao soltar e corrige o alvo (secante por frame, passos fixos): o vértice do peito agarrado termina a 1 px do cursor (antes 8 px).
+- **Pescoço/cabeça em duas etapas**: a 1ª versão (ponto da cabeça rígido com o chest + ponto fixo) divergia (erro de 15–28 cm no rig); a versão final mede o pivô e aponta pescoço e cabeça (0,00 / 0,78 mm).
+- **Testes de UI com configurações vindas do arquivo**: o personagem original foi salvo com o addon ligado (raios 2/8); configurações escritas pelo Python não têm passo de undo, então um Ctrl+Z voltava a elas — o cenário da régua faz `ed.undo_push` depois de preparar a cena.
+- **Bug achado pelo agente de UI**: `Shift+Alt+K` só lembrava a ferramenta se um gesto tivesse começado; agora a ferramenta ativa é lembrada a cada redesenho do viewport.
+- **Revisão de código (agente) — corrigido antes do PR**:
+  - o alvo da pele valia só no frame agarrado; agora é o **caminho original do ponto + w·Δ** em cada frame, com o melhor alvo por frame guardado (um ponto inalcançável, ex. em cima do cotovelo, nunca piora — teste na pele da Vale);
+  - exceção no fim do gesto deixava as trails congeladas e escritas parciais: o gesto é desfeito e as trails sempre retomam; os bones apontados (pescoço/cabeça) passam pelas mesmas recusas da cadeia;
+  - a pose ao vivo ficava velha depois de soltar (o `preserve_pose` devolvia os valores de antes da escrita do próprio gesto): ele agora ignora os bones do gesto;
+  - pole desligado (padrão do Rigify): braço de cima/coxa em IK movem a mão/o pé IK;
+  - o painel "Adjust Last Operation" refazia outra edição: o gesto não é mais REGISTER (continua 1 passo de undo);
+  - onion invisível no modo Corpo: o toggle "Trails" agora só mostra/esconde os caminhos e o mestre do LMP segue trails **ou** onion; o onion expandido é religado ao abrir o arquivo; janela 0 usa 6 frames de cada lado;
+  - realce em cache (por parte, frame e atualização do depsgraph), Smooth incremental (máx. 64 passes) e confirmação por outra tecla, faixa de keys com `foreach_get`, P11 com `try/finally`, caches do picking pela identidade da malha, adereços presos a `ORG-`.
+- **Onion skin apagava a pose não keyada** (achado pelo cenário de UI com o arquivo salvo pelo mantenedor com onion ligado): o P10 só preservava as armatures alvo do job, não a que deforma a malha do onion. P10 revisado + `test_onion_frame_stepping_keeps_the_unkeyed_pose`.
+
+Antes (PR #17, `feat/ephemeral-body`):
 
 **Rig efêmero, fase 4** (esta branch, `feat/ephemeral-body`, empilhada sobre o PR #16): ver o item em "O que funciona hoje". Testes novos: `tests/blender/test_ephemeral_body.py` (7: cadeia e pins do `Corpo` no esqueleto estilo Mixamo; inclinar o corpo pela cabeça com os pés parados < 0,1 mm e nada fora da janela; Rigify `chest` com pés FK presos; `hips` com pernas IK; `head`/`neck`/`hips`+FK recusados por rigidez), unitários de DLS + `WORLD`, pins (pés parados, orientação do pé, bit a bit no peso 0, perna esticada reportada) e `tests/ui/scenario_body.py` (7 na Vale: clique sem arrasto não escreve nada, hover na ponta do `chest` sem trail, gesto `Corpo`, ponta sob o cursor 0,00 px, pés IK parados, 7 ms por mouse move, 1 Ctrl+Z). Achados:
 - **A coluna do Rigify não é uma cadeia rígida**: `neck`/`head` pendem de `MCH-ROT-*` com COPY_ROTATION (Neck/Head Follow) e os `MCH-spine.*` distribuem a rotação de `chest`/`hips` por COPY_TRANSFORMS. O solve com links rígidos daria resultado errado ali; a checagem de rigidez (perturbação) agora recusa com motivo em vez de errar. Também protege o `Membro` de rigs desconhecidos.
@@ -175,9 +203,9 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 
 | Suite | Passa | Falha | Observação |
 |---|---|---|---|
-| unit | 542 | 0 | CI (pytest, Python 3.13); local Python 3.12. 178 do rig efêmero (`kinematics` 33 funções, `ephemeral` 14, `dense` 8, parametrizadas) + 261 `time_ruler` (`weight_signed`, geometria da régua) + 8 project + 9 `fcurve_model` + 17 `core_bezier` + 4 `sculpt_ops` + 11 `rig` (armatures falsos) + 30 `arc_and_falloff` (arc exato, x/keys intocados, tipos de handle, recusas, formas de falloff) + 20 `timing_ops` (pose keys, retime, limites, `λ` e piso, as duas políticas de spacing, gesto → `λ`, tela → frames) |
-| blender | 132 | 1 | Windows, Blender 5.2.1, com o asset local gerado (inclui `test_soft_grab_arc.py`, o teste do P8, `test_timing.py`, `test_settings_persistence.py`, `test_time_window.py`, `test_ephemeral_core.py`, `test_ephemeral_gesture.py` e `test_ephemeral_body.py`). A falha é `test_original_actions_untouched`: o arquivo original do personagem foi salvo com a Action idle alterada depois de gerar o asset; resolve com `python scripts/dev.py assets` (não é bug do addon). Sem o asset (CI) os testes que dependem dele pulam (`test_attack_asset.py`, parte de `test_trails.py`, o personagem em `test_rig_adapter.py`, o profiling de `test_spaces.py`), o resto passa — inclui paridade Bézier, `action_io`, trails, grab, adapters e `P(f)` no rig público gerado |
-| ui | 82 checagens | 0 | `dev.py test ui` (`scenario_body.py` 7 + `scenario_ephemeral.py` 7 + `scenario_spike.py` 18 + `scenario_release_refresh.py` 6 + `scenario_native_edit_refresh.py` 3 + `scenario_arc_soft.py` 10 + `scenario_timing.py` 10 + `scenario_settings.py` 4 + `scenario_time_ui.py` 13 + `scenario_unkeyed_pose.py` 4), Windows, Blender 5.2.1 com janela; local, não roda no CI |
+| unit | 583 | 0 | CI (pytest, Python 3.13); local Python 3.12. 178 do rig efêmero (`kinematics` 33 funções, `ephemeral` 14, `dense` 8, parametrizadas) + 261 `time_ruler` (`weight_signed`, geometria da régua) + 8 project + 9 `fcurve_model` + 17 `core_bezier` + 4 `sculpt_ops` + 11 `rig` (armatures falsos) + 30 `arc_and_falloff` (arc exato, x/keys intocados, tipos de handle, recusas, formas de falloff) + 20 `timing_ops` (pose keys, retime, limites, `λ` e piso, as duas políticas de spacing, gesto → `λ`, tela → frames) |
+| blender | 186 | 0 | Windows, Blender 5.2.1, com o asset local gerado (inclui `test_soft_grab_arc.py`, o teste do P8, `test_timing.py`, `test_settings_persistence.py`, `test_time_window.py`, `test_ephemeral_core.py`, `test_ephemeral_gesture.py` e `test_ephemeral_body.py`). Asset local regenerado (v2, malhas visíveis) em 2026-10-04: `test_original_actions_untouched` passa de novo. Inclui `test_ux_reform.py` e as asserções de deformação da malha. Sem o asset (CI) os testes que dependem dele pulam (`test_attack_asset.py`, parte de `test_trails.py`, o personagem em `test_rig_adapter.py`, o profiling de `test_spaces.py`), o resto passa — inclui paridade Bézier, `action_io`, trails, grab, adapters e `P(f)` no rig público gerado |
+| ui | 140 checagens | 0 | `dev.py test ui` (novos: `scenario_body_grab.py` 22, `scenario_smooth.py` 12, `scenario_tools.py` 14, `scenario_onion.py` 10; `scenario_body.py` 7 + `scenario_ephemeral.py` 7 + `scenario_spike.py` 18 + `scenario_release_refresh.py` 6 + `scenario_native_edit_refresh.py` 3 + `scenario_arc_soft.py` 10 + `scenario_timing.py` 10 + `scenario_settings.py` 4 + `scenario_time_ui.py` 13 + `scenario_unkeyed_pose.py` 4), Windows, Blender 5.2.1 com janela; local, não roda no CI |
 | manual | — | — | **M0, M1 e M2 pendentes do mantenedor** ([manual-tests](testing/manual-tests.md)); instalação do zip em perfil limpo e verificação visual das trails feitas pelo agente (não substituem o checklist) |
 | godot | — | — | Escopo 2 |
 
@@ -204,10 +232,6 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 
 ## Próximo objetivo
 
-**Reforma de UX** ([design/sculpt-ux.md](design/sculpt-ux.md), [ADR 0013](decisions/0013-body-and-trail-interaction.md)), depois do merge deste plano, em quatro PRs:
-1. **UX-1**: ferramentas Ponta/Membro/Corpo/Smooth na barra lateral, modo Corpo/Trail e toggles no painel N, régua v2.
-2. **UX-2**: agarrar o corpo (raycast na malha, realce, bone deformador → controle, ponto agarrado na superfície, IK por grab/arco/pole) e "Ligar Rigify".
-3. **UX-3**: onion skin (toggle, range da régua) e onion expandido (patch P11).
-4. **UX-4**: Smooth e pescoço/cabeça do Rigify em duas etapas.
-
-Depois: Escopo 2 (pipeline Godot + Loop parte 1). Futuro: "Simplificar", reinstalação automática do zip para os testes do mantenedor.
+1. **Mantenedor**: animar com a 0.7.0 (roteiro no PR da reforma) — agarrar o corpo da Vale com o Rigify escondido, as quatro ferramentas, Smooth, onion expandido, régua; ajustes viram itens da agenda.
+2. Depois: **Escopo 2** (pipeline Godot + Loop parte 1).
+3. Futuro (decisões do mantenedor): "Simplificar" regiões densas; reinstalar o zip automaticamente; talvez unir os modos Corpo e Trail.

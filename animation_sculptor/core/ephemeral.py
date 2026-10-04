@@ -38,7 +38,9 @@ REACH_TOL = 1e-6
 class Chain:
     """An FK chain sampled at N frames. Shapes: base (N, 4, 4); links (K, 4, 4) or (N, K, 4, 4);
     lengths (K,); loc/scale (N, K, 3); rot: K arrays, (N, 4) quaternion or (N, 3) Euler per ``modes``;
-    lock_rotation (K, 3) bools (quaternion: locks the x/y/z components, like Blender's 3D locks)."""
+    lock_rotation (K, 3) bools (quaternion: locks the x/y/z components, like Blender's 3D locks);
+    point: the dragged point in the last bone's local space, (3,) or per frame (N, 3); None = its tail
+    (0, length, 0). A point grabbed on the body surface is rigid with its bone."""
 
     base: np.ndarray
     links: np.ndarray
@@ -48,6 +50,7 @@ class Chain:
     modes: list
     scale: np.ndarray
     lock_rotation: np.ndarray = field(default=None)
+    point: np.ndarray = field(default=None)
 
     @property
     def bone_count(self) -> int:
@@ -64,10 +67,22 @@ class Chain:
         rot3 = self.rotation_matrices() if rot3 is None else rot3
         return kin.forward(self.base, self.links, kin.basis_matrices(self.loc, rot3, self.scale))
 
+    def local_point(self) -> np.ndarray:
+        """(N, 3) dragged point in the last bone's local space."""
+        if self.point is None:
+            p = np.array([0.0, float(self.lengths[-1]), 0.0])
+        else:
+            p = np.asarray(self.point, dtype=np.float64)
+        return np.broadcast_to(p, (self.frame_count, 3))
+
+    def point_world(self, world) -> np.ndarray:
+        """(N, 3) world position of the dragged point for the chain's world matrices (N, K, 4, 4)."""
+        last = world[:, -1]
+        return np.einsum("nij,nj->ni", last[:, :3, :3], self.local_point()) + last[:, :3, 3]
+
     def tip(self, rot3=None) -> np.ndarray:
-        """World position (N, 3) of the dragged point: the tail of the last bone."""
-        world = self.world(rot3)
-        return kin.tails(world[:, -1], self.lengths[-1])
+        """World position (N, 3) of the dragged point (the tail of the last bone by default)."""
+        return self.point_world(self.world(rot3))
 
 
 @dataclass
@@ -115,13 +130,13 @@ def _frames_rot(chain, world, i):
     return frame[:, :3, :3]
 
 
-def _dls_deltas(heads, tails, target, orientation):
+def _dls_deltas(heads, tip, target, orientation):
     """Own deltas from the damped least squares; ``WORLD`` keeps the last bone's world orientation."""
     n, k = heads.shape[:2]
     if orientation != WORLD or k < 2:
-        deltas, _tip = solve.dls_chain(heads, tails[:, -1], target)
+        deltas, _tip = solve.dls_chain(heads, tip, target)
         return deltas
-    d, _tip = solve.dls_chain(heads[:, :k - 1], heads[:, k - 1], target - (tails[:, -1] - heads[:, -1]))
+    d, _tip = solve.dls_chain(heads[:, :k - 1], heads[:, k - 1], target - (tip - heads[:, -1]))
     deltas = np.broadcast_to(np.eye(3), (n, k, 3, 3)).copy()
     deltas[:, :k - 1] = d
     total = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
@@ -135,28 +150,28 @@ def _own_deltas(chain, world, target, orientation, bend_axis, solver=AUTO):
     """Own world turn of each bone (N, K, 3, 3) in the old configuration."""
     n, k = chain.frame_count, chain.bone_count
     heads = world[:, :, :3, 3]
-    tails = kin.tails(world, chain.lengths)
+    tip = chain.point_world(world)
     eye = np.broadcast_to(np.eye(3), (n, 3, 3))
     deltas = np.broadcast_to(np.eye(3), (n, k, 3, 3)).copy()
     if solver == DLS and k > 1:
-        return _dls_deltas(heads, tails, target, orientation)
+        return _dls_deltas(heads, tip, target, orientation)
     if k == 1:
-        deltas[:, 0] = kin.aim(heads[:, 0], tails[:, 0], target)
+        deltas[:, 0] = kin.aim(heads[:, 0], tip, target)
     elif k in (2, 3):
         if bend_axis is None:
             bend_axis = world[:, 1, :3, 0]           # the middle bone's X axis (elbow/knee hinge)
         if k == 2:
-            c, t = tails[:, 1], target
+            c, t = tip, target
         else:
             c = heads[:, 2]
-            t = target - (tails[:, 2] - heads[:, 2])  # where the hand's head must go (hand keeps its world turn)
+            t = target - (tip - heads[:, 2])  # where the hand's head must go (hand keeps its world turn)
         d1, d2, _tip = kin.two_bone_ik(heads[:, 0], heads[:, 1], c, t, bend_axis)
         deltas[:, 0] = d1
         deltas[:, 1] = d2
         if k == 3:
             deltas[:, 2] = np.linalg.inv(d1 @ d2) if orientation == WORLD else eye
     else:
-        deltas = _dls_deltas(heads, tails, target, orientation)
+        deltas = _dls_deltas(heads, tip, target, orientation)
     return deltas
 
 
@@ -223,9 +238,11 @@ def _apply_locks(new, old, mode, locks):
     return out
 
 
-def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solver=AUTO, pins=()) -> Result:
+def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solver=AUTO, pins=(),
+           target=None) -> Result:
     """Run the ephemeral gesture. ``weights`` (N,) in [0, 1]; ``delta`` (3,) world drag; ``solver`` AUTO
-    (by chain length) or DLS; ``pins``: FK limbs whose end stays put (``Pin``)."""
+    (by chain length) or DLS; ``pins``: FK limbs whose end stays put (``Pin``); ``target`` (N, 3) overrides
+    ``tip + w·delta`` (corrections measured on the real rig)."""
     reason = check(chain) or next((check(p.limb) for p in pins if check(p.limb)), "")
     if reason:
         raise ValueError(reason)
@@ -233,8 +250,8 @@ def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solv
     delta = np.asarray(delta, dtype=np.float64)
     rot3 = chain.rotation_matrices()
     world = chain.world(rot3)
-    tip0 = kin.tails(world[:, -1], chain.lengths[-1])
-    target = tip0 + weights[:, None] * delta[None, :]
+    tip0 = chain.point_world(world)
+    target = tip0 + weights[:, None] * delta[None, :] if target is None else np.asarray(target, dtype=np.float64)
     active = weights > 0.0
     deltas = _own_deltas(chain, world, target, orientation, bend_axis, solver)
 
@@ -249,7 +266,7 @@ def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solv
         new_rot.append(vals)
         new_rot3[:, i] = kin.rotation_to_mat3(vals, mode)
     world_new = chain.world(new_rot3)
-    tip = kin.tails(world_new[:, -1], chain.lengths[-1])
+    tip = chain.point_world(world_new)
     tip = np.where(active[:, None], tip, tip0)
     reached = np.linalg.norm(tip - target, axis=1) < REACH_TOL
     solved = [_solve_pin(p, world, world_new, active) for p in pins]

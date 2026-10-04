@@ -64,6 +64,9 @@ def _skeleton():
             pb.rotation_mode = 'XYZ'
             pb.rotation_euler = (angle * (0.5 if "Leg" in name else 1.0), 0.0, 0.1 * angle)
             ob.keyframe_insert(f'pose.bones["{name}"].rotation_euler', frame=frame)
+    import body_mesh
+
+    body_mesh.add_skinned_body(ob)          # a skin on every bone: the Corpo tests check the mesh too
     return ob
 
 
@@ -126,7 +129,24 @@ def test_rigify_hips_with_ik_legs_is_fine(public_rig):
     assert max(np.linalg.norm(after[f] - feet[f]) for f in range(1, 25)) < 1e-5         # the rig pins IK feet
 
 
-@pytest.mark.parametrize("bone,legs_fk", [("head", False), ("neck", False), ("hips", True)])
+@pytest.mark.parametrize("bone", ["head", "neck"])
+def test_rigify_neck_head_lean_then_aim(public_rig, bone):
+    """Decision 10: Corpo on the neck/head leans torso + chest, then aims the bone at the target."""
+    rig = public_rig
+    _fk_legs(rig, False)
+    before = _tails(rig, bone, range(1, 25))
+    delta = np.array([0.0, -0.06, -0.03])
+    assert _gesture(rig, bone, 12, Vector(delta), radius_past=4, radius_future=4) == {'FINISHED'}
+    after = _tails(rig, bone, range(1, 25))
+    err = np.linalg.norm(after[12] - before[12] - delta)
+    print(f"{bone} two-stage error at f0: {err * 1000:.2f} mm")
+    assert err < 2e-3
+    for f in range(1, 25):
+        if not 8 <= f <= 16:
+            assert np.linalg.norm(after[f] - before[f]) < 1e-5, f
+
+
+@pytest.mark.parametrize("bone,legs_fk", [("hips", True)])
 def test_rigify_non_rigid_chains_are_refused(public_rig, bone, legs_fk):
     rig = public_rig
     _fk_legs(rig, legs_fk)
@@ -134,3 +154,45 @@ def test_rigify_non_rigid_chains_are_refused(public_rig, bone, legs_fk):
     before = len(cb.fcurves)
     assert _gesture(rig, bone, 12, (0.0, 0.05, 0.0), radius_past=4, radius_future=4) == {'CANCELLED'}
     assert len(cb.fcurves) == before
+
+
+def test_body_lean_on_the_skin_keeps_the_feet_planted():
+    """Corpo on the Mixamo-like skeleton: the feet skin does not move, the head skin follows the drag."""
+    import deform_check as dc
+
+    ob = _skeleton()
+    mesh = dc.deformed_mesh(ob)
+    feet = {s: dc.part(mesh, f"{s}Foot") for s in ("Left", "Right")}
+    head = dc.part(mesh, "Head")
+    assert all(len(i) for i in feet.values()) and len(head)
+    frames = list(range(1, 31))
+    before = dc.frames_snapshot(mesh, frames)
+    delta = Vector((0.0, -0.12, -0.10))
+    assert _gesture(ob, "Head", 15, delta, radius_past=6, radius_future=6) == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, frames)
+    for s, idx in feet.items():
+        assert dc.max_change(before, after, frames, idx) < 1e-4, s
+    _head_ring, tail_ring = dc.tube_ends(head)
+    assert abs(dc.centroid_shift(before[15], after[15], tail_ring) - np.array(delta)).max() < 2e-3
+    assert dc.max_change(before, after, [f for f in frames if not 9 <= f <= 21]) < 1e-5
+
+
+def test_rigify_head_two_stage_moves_the_head_skin(public_rig):
+    """Decision 10 on the skin: DEF-spine.006 (the head) follows the drag within 2 mm (rig test: 2 mm)."""
+    import deform_check as dc
+
+    rig = public_rig
+    _fk_legs(rig, False)
+    mesh = dc.deformed_mesh(rig)
+    part = dc.part(mesh, "DEF-spine.006")
+    assert len(part)
+    _h, tail_ring = dc.tube_ends(part)
+    frames = list(range(1, 25))
+    before = dc.frames_snapshot(mesh, frames)
+    delta = np.array([0.0, -0.06, -0.03])
+    assert _gesture(rig, "head", 12, Vector(delta), radius_past=4, radius_future=4) == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, frames)
+    err = np.linalg.norm(dc.centroid_shift(before[12], after[12], tail_ring) - delta)
+    print(f"head skin two-stage error: {err * 1000:.2f} mm")
+    assert err < 2e-3
+    assert dc.max_change(before, after, [f for f in frames if not 8 <= f <= 16]) < 1e-5

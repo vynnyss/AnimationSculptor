@@ -12,3 +12,6 @@ scripts/.dev.toml
 .pytest_cache/
 tests/assets/local/
 docs/reference/local/
+
+# agent worktrees (Claude Code)
+.claude/worktrees/

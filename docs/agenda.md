@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — reforma de UX (plano em revisão)
+## Agora — reforma de UX em revisão (um PR)
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -31,13 +31,10 @@
 
 15. **[mergeado — PR #17] Rig efêmero, fase 4** (0.6.0): escopo `Corpo` (DLS na coluna, pernas FK presas), arrastar a ponta do bone direto, validação de rigidez (`anim/spaces.chain_rigidity`), clique sem arrasto não escreve nada. *Resultado: inclinar o corpo pela cabeça (genérico) ou pelo `chest` (Rigify) com os pés parados; coluna do Rigify acima do `chest` recusada com motivo (não rígida).*
 
-16. **[em revisão — PR `docs/ux-reform-plan`] Plano da reforma de UX** (só docs): [ADR 0013](decisions/0013-body-and-trail-interaction.md), [ADR 0012](decisions/0012-spacing-policy-preserve-path.md), [design/sculpt-ux.md](design/sculpt-ux.md).
-17. **UX-1** — ferramentas Ponta/Membro/Corpo/Smooth na barra lateral, modo Corpo/Trail e toggles no painel N, régua v2.
-18. **UX-2** — agarrar o corpo (raycast, realce, DEF → controle, ponto na superfície, IK por grab/arco/pole), "Ligar Rigify".
-19. **UX-3** — onion skin (toggle, range da régua) e onion expandido (patch P11 do LMP).
-20. **UX-4** — Smooth (pincel temporal) e pescoço/cabeça do Rigify em duas etapas.
+16. **[mergeado — PR #18] Plano da reforma de UX** (só docs): [ADR 0013](decisions/0013-body-and-trail-interaction.md), [ADR 0012](decisions/0012-spacing-policy-preserve-path.md), [design/sculpt-ux.md](design/sculpt-ux.md).
+17. **[em revisão — PR `feat/ux-reform`, um PR só por pedido do mantenedor] Reforma de UX (0.7.0)**: UX-1 a UX-4 do plano — ferramentas na lateral, modos Corpo/Trail, agarrar o corpo (pele segue o cursor), pescoço/cabeça em duas etapas, Smooth, régua v2, onion normal/expandido, painel N limpo, Ligar Rigify; testes conferem a deformação da malha. *Resultado: unit 583, blender 186, ui 140.*
 
-> Estado dos PRs: #1–#11 e #13–#17 estão na `main`; o plano da reforma de UX está em revisão.
+> Estado dos PRs: #1–#11 e #13–#18 estão na `main`; a reforma de UX está em revisão.
 
 ## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
 
