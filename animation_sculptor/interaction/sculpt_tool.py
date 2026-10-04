@@ -19,10 +19,10 @@ import numpy as np
 from .. import rig
 from ..anim import action_io, spaces
 from ..anim.snapshot import Snapshot
-from ..core import bezier, falloff, sculpt_ops, timing_ops
+from ..core import bezier, falloff, ruler, sculpt_ops, timing_ops
 from ..trails import provider
 from ..ui import prefs, props
-from . import gizmo, picking, state, timing_edit
+from . import gizmo, hud, picking, state, timing_edit
 
 
 def _settings():
@@ -107,7 +107,8 @@ class _EditBase:
 
 class _GrabEdit(_EditBase):
     """Grab of the location keys at one frame, optionally *soft*: the other location keys of the control
-    within ``radius`` frames follow with a falloff weight, each through its own R(f)⁻¹.
+    within ``radius_past`` frames before / ``radius_future`` frames after follow with a falloff weight
+    (core.falloff.weight_signed), each through its own R(f)⁻¹.
 
     Every unlocked location axis gets a key at the grabbed frame (inserted with the current value when
     missing, the F-Curve created when absent), so the edit is always stored as keyframes. Neighbour keys
@@ -116,9 +117,10 @@ class _GrabEdit(_EditBase):
 
     kind = "GRAB"
 
-    def __init__(self, ob, pb, frame, radius=0.0, shape="SMOOTH"):
+    def __init__(self, ob, pb, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH"):
         super().__init__(ob, pb, frame)
-        self.radius = float(radius)
+        self.radius_past = float(radius_past)
+        self.radius_future = float(radius_future)
         self.shape = shape
         self.channels = []          # (axis, fcurve, key index, base model)
         for axis in range(3):
@@ -144,11 +146,12 @@ class _GrabEdit(_EditBase):
         return self.neighbor_frames()
 
     def weights(self):
-        """[(frame, weight)] of the neighbour keys inside the radius."""
+        """[(frame, weight)] of the neighbour keys inside the window (past / future radius)."""
         frames = self.neighbor_frames()
-        if self.radius <= 0 or not frames:
+        if (self.radius_past <= 0 and self.radius_future <= 0) or not frames:
             return []
-        w = falloff.weight(np.asarray(frames, dtype=np.float64) - self.frame, self.radius, self.shape)
+        w = falloff.weight_signed(np.asarray(frames, dtype=np.float64) - self.frame, self.radius_past,
+                                  self.radius_future, self.shape)
         return [(f, float(x)) for f, x in zip(frames, w) if x > 0.0]
 
     def apply(self, delta_world):
@@ -223,6 +226,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                               ('SPACING', "Spacing", "Ease/favor of the segment around frame")),
                        default='AUTO', options={'SKIP_SAVE'})
     radius: FloatProperty(name="Raio (frames)", min=0.0, max=500.0, default=0.0, options={'SKIP_SAVE'})
+    radius_past: FloatProperty(name="Raio passado", min=-1.0, max=500.0, default=-1.0, options={'SKIP_SAVE'},
+                               description="Raio para trás (frames); -1 = usar Raio")
+    radius_future: FloatProperty(name="Raio futuro", min=-1.0, max=500.0, default=-1.0, options={'SKIP_SAVE'},
+                                 description="Raio para frente (frames); -1 = usar Raio")
     break_tangent: BoolProperty(name="Quebrar tangente", default=False, options={'SKIP_SAVE'})
     new_frame: FloatProperty(options={'SKIP_SAVE'})
     favor: FloatProperty(options={'SKIP_SAVE'})
@@ -255,7 +262,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         self.obj_name, self.bone, self.frame = obj_name, bone, frame
         return ""
 
-    def _begin(self, context, obj_name, bone, frame, mode, radius=0.0):
+    def _begin(self, context, obj_name, bone, frame, mode, radii=(0.0, 0.0)):
         ob = bpy.data.objects.get(obj_name)
         pb = ob.pose.bones.get(bone) if ob is not None and ob.pose is not None else None
         if pb is None:
@@ -273,7 +280,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if mode == 'GRAB':
             if not action_io.bone_has_key(ob, pb, frame):
                 return "sem key neste frame"
-            self.edit = _GrabEdit(ob, pb, frame, radius, _settings().falloff if _settings() else "SMOOTH")
+            self.edit = _GrabEdit(ob, pb, frame, radii[0], radii[1],
+                                  _settings().falloff if _settings() else "SMOOTH")
             if not self.edit.editable:
                 return "sem key de location editável neste frame"
         else:
@@ -296,12 +304,14 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                 else:
                     self.edit.apply(self.favor, self.ease)
             return {'FINISHED'}
-        reason = self._begin(context, self.obj_name, self.bone, self.frame, self.mode, self.radius)
+        radii = (self.radius if self.radius_past < 0 else self.radius_past,
+                 self.radius if self.radius_future < 0 else self.radius_future)
+        reason = self._begin(context, self.obj_name, self.bone, self.frame, self.mode, radii)
         if reason:
             self.report({'WARNING'}, f"Animation Sculptor: {reason}")
             return {'CANCELLED'}
         with provider.suspended(keys=[(self.obj_name, self.bone)]):
-            if self.edit.kind == "GRAB" and self.radius > 0:
+            if self.edit.kind == "GRAB" and max(radii) > 0:
                 self.edit.prefetch([])
             if self.edit.kind == "ARC":
                 self.edit.break_tangent = self.break_tangent
@@ -309,6 +319,11 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         return {'FINISHED'}
 
     def invoke(self, context, event):
+        if state.RULER_HOVER is not None:
+            # the gizmo routes every click here: a click on an end handle of the time ruler is not a sculpt
+            # gesture, it starts the ruler modal (its own undo step); this operator ends without one
+            bpy.ops.asc.time_window('INVOKE_DEFAULT', side=state.RULER_HOVER, shift=event.shift)
+            return {'CANCELLED'}
         hit = state.HOVER
         if hit is None or context.region_data is None:
             return {'PASS_THROUGH'}
@@ -316,8 +331,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             return self._invoke_timing(context, event, hit)
         mode = 'GRAB' if hit.is_key else 'ARC'
         settings = _settings()
-        radius = settings.soft_radius if settings is not None else 0.0
-        reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, radius)
+        radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
+        reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, radii)
         if reason:
             return self._refuse(context, hit, reason)
         self.origin = Vector(hit.world)
@@ -434,8 +449,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         delta = f"Δ ({d.x:+.3f}, {d.y:+.3f}, {d.z:+.3f}) m"
         if self.edit.kind == "GRAB":
             n = len(self.edit.weights())
-            head = (f"Grab {self.bone} @ {self.frame}   {delta}   raio {self.edit.radius:g} frames "
-                    f"({n} key(s) vizinha(s)) · roda/[ ]: raio")
+            head = (f"Grab {self.bone} @ {self.frame}   {delta}   raio ←{self.edit.radius_past:g} · "
+                    f"{self.edit.radius_future:g}→ frames ({n} key(s) vizinha(s)) · roda/[ ]: raio")
         else:
             skipped = ""
             if self.edit.refused:
@@ -471,10 +486,17 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             state.STATS["last_move_ms"] = (time.perf_counter() - t0) * 1000.0
             return {'RUNNING_MODAL'}
         if self.edit.kind == "GRAB" and event.value == 'PRESS' and event.type in RADIUS_KEYS:
+            # both sides move by the same step (linked radii stay equal, unlinked keep their difference)
             step = 1.0 if event.type in {'WHEELUPMOUSE', 'RIGHT_BRACKET'} else -1.0
-            self.edit.radius = max(0.0, min(500.0, self.edit.radius + step))
-            if _settings() is not None:
-                _settings().soft_radius = self.edit.radius    # remembered in the scene (saved with the file)
+            self.edit.radius_past = max(0.0, min(500.0, self.edit.radius_past + step))
+            self.edit.radius_future = max(0.0, min(500.0, self.edit.radius_future + step))
+            settings = _settings()
+            if settings is not None:                          # remembered in the scene (saved with the file)
+                linked = settings.radius_linked
+                settings.radius_linked = False                # write both sides as they are
+                settings.radius_past = self.edit.radius_past
+                settings.radius_future = self.edit.radius_future
+                settings.radius_linked = linked
             self._reapply(context)
             return {'RUNNING_MODAL'}
         if self.edit.kind == "ARC" and event.type == 'B' and event.value == 'PRESS':
@@ -513,6 +535,86 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             state.STATS["refresh_ms"] = (time.perf_counter() - t0) * 1000.0
 
 
+class ASC_OT_time_window(bpy.types.Operator):
+    """Drag an end of the time ruler: radius of the gesture window before (red) / after (green) the frame"""
+    bl_idname = "asc.time_window"
+    bl_label = "Janela de tempo"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    side: EnumProperty(items=(('PAST', "Passado", ""), ('FUTURE', "Futuro", "")), default='FUTURE',
+                       options={'SKIP_SAVE'})
+    shift: BoolProperty(name="Os dois lados", default=False, options={'SKIP_SAVE'},
+                        description="Edita passado e futuro juntos (Shift)")
+    radius: FloatProperty(name="Raio", min=0.0, max=500.0, default=0.0, options={'SKIP_SAVE'})
+
+    def _set(self, settings, radius, both):
+        if both or settings.radius_linked:
+            linked = settings.radius_linked
+            settings.radius_linked = False
+            settings.radius_past = radius
+            settings.radius_future = radius
+            settings.radius_linked = linked
+        elif self.side == 'PAST':
+            settings.radius_past = radius
+        else:
+            settings.radius_future = radius
+
+    def execute(self, context):
+        settings = _settings()
+        if settings is None:
+            return {'CANCELLED'}
+        self._set(settings, self.radius, self.shift)
+        return {'FINISHED'}
+
+    def invoke(self, context, event):
+        settings = _settings()
+        lay = hud.current_layout(context)
+        if settings is None or lay is None or context.area is None:
+            return {'CANCELLED'}
+        self.before = (settings.radius_past, settings.radius_future, settings.radius_linked)
+        state.RULER_SPAN = lay.half_span            # the scale stays put while the handle moves
+        state.RULER_DRAG = self.side
+        state.RULER_HOVER = None
+        context.window_manager.modal_handler_add(self)
+        self._header(context)
+        return {'RUNNING_MODAL'}
+
+    def _header(self, context):
+        s = _settings()
+        context.area.header_text_set(
+            f"Janela de tempo   passado {s.radius_past:g} · futuro {s.radius_future:g} frames"
+            f"{' (ligados)' if s.radius_linked else ''}   Shift: os dois lados · Esc/RMB: cancelar · soltar: confirmar")
+
+    def modal(self, context, event):
+        settings = _settings()
+        if event.type == 'MOUSEMOVE':
+            lay = hud.current_layout(context)
+            if lay is not None:
+                self.radius = ruler.radius_from_x(lay, self.side, event.mouse_region_x)
+                self._set(settings, self.radius, event.shift or self.shift)
+                self._header(context)
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'RELEASE' or (
+                event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS'):
+            self._end(context)
+            return {'FINISHED'}
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            past, future, linked = self.before
+            settings.radius_linked = False
+            settings.radius_past, settings.radius_future = past, future
+            settings.radius_linked = linked
+            self._end(context)
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
+    def _end(self, context):
+        state.RULER_DRAG = None
+        state.RULER_SPAN = 0
+        context.area.header_text_set(None)
+        context.area.tag_redraw()
+
+
 class ASC_WT_sculpt(bpy.types.WorkSpaceTool):
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'POSE'
@@ -528,8 +630,21 @@ class ASC_WT_sculpt(bpy.types.WorkSpaceTool):
         ("view3d.select_box", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'}, None),
     )
 
+    @staticmethod
+    def draw_settings(context, layout, tool):
+        """Tool settings bar (top of the viewport): the gesture window, same fields as the Gestos panel."""
+        s = props.get(context)
+        if s is None:
+            return
+        row = layout.row(align=True)
+        row.prop(s, "radius_past", text="Passado")
+        row.prop(s, "radius_linked", text="", icon='LINKED' if s.radius_linked else 'UNLINKED')
+        row.prop(s, "radius_future", text="Futuro")
+        layout.prop(s, "falloff", text="")
+        layout.prop(s, "show_time_ruler", text="Régua", icon='TIME')
 
-classes = (ASC_OT_sculpt_gesture,)
+
+classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window)
 TOOL_HOTKEY = {"type": 'K', "value": 'PRESS', "shift": True, "alt": True}   # free in the default keymap (5.2)
 _keymaps = []
 

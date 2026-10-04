@@ -19,7 +19,9 @@
 | Ctrl+LMB arrastar | key point | **Retime** da pose key (**implementado**: ao longo da trail; frames inteiros; Shift = sub-frame e precisão) |
 | Ctrl+LMB arrastar | segmento (in-between) | **Spacing** (**implementado**: horizontal = favor, vertical = ease, 250 px por 1,0) |
 | Shift (segurando) | durante gesto | precisão ×0.1 |
-| Roda / `[` `]` | durante grab | raio do soft grab (frames); gravado em `Scene.asc_sculpt.soft_radius` (salvo no arquivo) |
+| Roda / `[` `]` | durante grab | raio do soft grab (frames): os dois lados pelo mesmo passo; gravado em `Scene.asc_sculpt.radius_past`/`radius_future` (salvo no arquivo) |
+| LMB arrastar | ponta da régua de tempo | raio do **passado** (ponta vermelha) ou do **futuro** (ponta verde) do soft grab, em frames inteiros (`asc.time_window`; 1 passo de undo; Esc/RMB cancela) |
+| Shift+LMB arrastar | ponta da régua | os dois raios juntos |
 | `B` | durante arc drag | alterna "quebrar tangente" (`FREE`); começa desligado |
 | Esc / RMB | durante gesto | cancela (restaura snapshot) |
 | soltar / Enter | durante gesto | confirma (1 passo de undo) |
@@ -92,9 +94,9 @@ Durante `Dragging`: engine do LMP suspenso (sem frame stepping concorrente), pre
 - Playback: o overlay de sculpt (hover, anéis, preview) **não é desenhado enquanto a animação toca** quando "Esconder overlay no playback" (`Scene.asc_sculpt.hide_on_playback`, padrão ligado) está ativo; as trails seguem a configuração do LMP ("Hide Motion Path During Playback").
 - Feedback a cada mouse move deve custar < 16 ms para um controle com ~200 frames (orçamento a medir; ver [testing/strategy.md](../testing/strategy.md#profiling)).
 
-## Planejado: UI de tempo e rig efêmero
+## UI de tempo (implementada) e rig efêmero (planejado)
 
-Detalhe em [ephemeral-rig.md](ephemeral-rig.md#ui): régua de tempo no viewport (janela do gesto, passado vermelho/futuro verde, pontas arrastáveis, raio assimétrico), paleta passado/futuro nas trails e no onion skin, configurações na barra nativa da ferramenta (`draw_settings`), e LMB num controle só de rotação passa de recusa a **gesto efêmero** (Escopo 4).
+Detalhe em [ephemeral-rig.md](ephemeral-rig.md#ui). **Implementado (0.4.0)**: régua de tempo embaixo do viewport com a ferramenta ativa (centrada no frame atual; ticks/números; janela do soft grab em degradê vermelho → branco → verde com alfa pelo peso; keys do controle ativo em amarelo; pontas arrastáveis com o raio ao lado; escondida no playback com o overlay; desligável em "Régua de tempo"), raio assimétrico do soft grab, paleta passado vermelho/futuro verde nas trails e no onion skin (aplicada uma vez por cena; botão de cor no painel Gestos reaplica), barra nativa da ferramenta (`draw_settings`: Passado · cadeado · Futuro, falloff, régua; aparece com View › Tool Settings ligado). Header ao passar sobre uma ponta: `Animation Sculptor · régua de tempo: raio do passado|futuro   LMB arrastar: mudar · Shift: os dois lados`; durante o arrasto: `Janela de tempo   passado P · futuro F frames (ligados)   …`. **Planejado**: LMB num controle só de rotação passa de recusa a **gesto efêmero** (fase 3).
 
 ## Fora do escopo da Iteração 1 (planejado)
 

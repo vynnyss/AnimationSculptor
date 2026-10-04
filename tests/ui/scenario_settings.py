@@ -63,7 +63,8 @@ def scenario(h):
     h.check("Shift+Alt+K activates the Animation Sculptor tool", _active_tool(h) == tool_id, _active_tool(h))
 
     # the scene's soft radius is used by the next grab without touching the wheel
-    scene.asc_sculpt.soft_radius = 8.0
+    scene.asc_sculpt.radius_linked = True
+    scene.asc_sculpt.radius_past = 8.0
     yield from _wait(lambda: (t := provider.get_trail(rig, bone)) is not None and t.complete)
     trail = provider.get_trail(rig, bone)
     co = h.to_window(picking.world_to_screen(region, rv3d, Vector(trail.point_at(key_frame))))
@@ -83,5 +84,6 @@ def scenario(h):
     h.event('ESC', 'RELEASE', (co[0] + 30, co[1] - 20))
     h.event('LEFTMOUSE', 'RELEASE', (co[0] + 30, co[1] - 20))
     yield 0.3
-    h.check("the wheel stores the radius in the scene", scene.asc_sculpt.soft_radius == 9.0, scene.asc_sculpt.soft_radius)
+    radii = (scene.asc_sculpt.radius_past, scene.asc_sculpt.radius_future)
+    h.check("the wheel stores the radius in the scene", radii == (9.0, 9.0), radii)
 

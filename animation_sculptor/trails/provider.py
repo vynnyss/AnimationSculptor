@@ -140,6 +140,27 @@ def use_adapter_bone_points(enabled: bool = True) -> None:
     engine.BONE_POINT_RESOLVER = _adapter_bone_point if enabled else None
 
 
+# Past / future convention of Animation Sculptor (design/ephemeral-rig.md, "Paleta passado/futuro"):
+# past red, future green, current frame white — trails, onion skin and the time ruler alike.
+PAST_COLOR = (0.95, 0.22, 0.18)
+FUTURE_COLOR = (0.25, 0.85, 0.32)
+CURRENT_COLOR = (1.0, 1.0, 1.0)
+
+
+def apply_palette(scene) -> bool:
+    """Set the LMP past/future colours of the trails and the onion skin to the Animation Sculptor
+    palette (plain settings, no patch: the user may change them afterwards in the Trails panel)."""
+    s = settings(scene)
+    if s is None:
+        return False
+    s.path_color_past = PAST_COLOR
+    s.path_color_future = FUTURE_COLOR
+    s.path_current_color = CURRENT_COLOR
+    s.onion_color_before = PAST_COLOR
+    s.onion_color_after = FUTURE_COLOR
+    return True
+
+
 def stats() -> dict:
     st = engine.STATE
     return {

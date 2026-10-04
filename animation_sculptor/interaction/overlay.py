@@ -10,7 +10,7 @@ import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from ..trails.lmp import compat
-from . import picking, state
+from . import hud, picking, state
 
 _handle = None
 
@@ -81,16 +81,23 @@ def _draw_ring(shader, co, radius, color, width):
 
 
 def draw_pixel():
-    hover, gesture, refusal = state.HOVER, state.GESTURE, state.REFUSAL
-    if hover is None and gesture is None and refusal is None:
-        return
-    settings = getattr(bpy.context.scene, "asc_sculpt", None)
-    screen = bpy.context.screen
+    context = bpy.context
+    settings = getattr(context.scene, "asc_sculpt", None)
+    screen = context.screen
     if settings is not None and settings.hide_on_playback and screen is not None and screen.is_animation_playing:
         return
-    context = bpy.context
     region, rv3d = context.region, context.region_data
     if region is None or rv3d is None:
+        return
+    gpu.state.blend_set('ALPHA')
+    try:
+        hud.draw(context)
+    except Exception as exc:
+        print(f"[Animation Sculptor] time ruler error: {exc}")
+    finally:
+        gpu.state.blend_set('NONE')
+    hover, gesture, refusal = state.HOVER, state.GESTURE, state.REFUSAL
+    if hover is None and gesture is None and refusal is None:
         return
     px = compat.pixel_size()
     shader = gpu.shader.from_builtin('POLYLINE_UNIFORM_COLOR')

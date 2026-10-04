@@ -32,7 +32,7 @@ Build **0.3.0**. Asset: `tests/assets/local/attack_test.blend` (`python scripts/
 
 7. **Grab**: arrastar o losango do impacto (frame 18) para longe do corpo e soltar. Esperado: a mão segue o mouse (anel laranja); ao soltar, a trail nova coincide com o preview amarelo; Dope Sheet: nenhuma key nova. Ctrl+Z volta ao caminho antigo.
 8. **Soft grab com a roda**: arrastar o mesmo losango e, **sem soltar**, girar a roda do mouse (ou `[`/`]`) até o header mostrar raio ≈ 6 frames. Esperado: anéis laranja nas keys vizinhas (10, 16, 26, conforme o raio), que acompanham suavemente; nenhuma key nova. Soltar; Ctrl+Z.
-9. **Raio no painel**: em N › Animation Sculptor › **Gestos**, definir **Raio (frames)** = 6 e testar o **Falloff** (Suave, Esfera, Agudo, Linear, Constante); arrastar o losango de novo: o raio vem do painel; girar a roda durante o gesto muda o valor do painel (é salvo no arquivo). Raio 0 = só a key arrastada.
+9. **Raio no painel**: em N › Animation Sculptor › **Gestos**, definir **Raio passado** = 6 (com o cadeado ligado o futuro acompanha; desde 0.4.0 os dois lados também se ajustam pelas pontas da régua de tempo embaixo do viewport) e testar o **Falloff** (Suave, Esfera, Agudo, Linear, Constante); arrastar o losango de novo: o raio vem do painel; girar a roda durante o gesto muda o valor do painel (é salvo no arquivo). Raio 0 = só a key arrastada.
 
 **Arc (arco entre keys)**
 

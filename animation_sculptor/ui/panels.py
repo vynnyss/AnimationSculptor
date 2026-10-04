@@ -74,24 +74,48 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
             return
         col = layout.column(align=True)
         col.label(text="Espaço (arrastar)", icon='OBJECT_ORIGIN')
-        col.prop(settings, "soft_radius", text="Raio (frames)")
+        row = col.row(align=True)
+        row.prop(settings, "radius_past", text="Raio passado")
+        row.prop(settings, "radius_linked", text="", icon='LINKED' if settings.radius_linked else 'UNLINKED')
+        col.prop(settings, "radius_future", text="Raio futuro")
         col.prop(settings, "falloff")
+        col.prop(settings, "show_time_ruler")
         col = layout.column(align=True)
         col.label(text="Tempo (Ctrl+arrastar)", icon='TIME')
         col.prop(settings, "timing_scope", text="Escopo")
         col.prop(settings, "spacing_policy")
         trails = getattr(context.scene, "asc_trails", None)
         if trails is not None:
-            col.prop(trails, "path_color_mode", text="Cor da trail")
+            row = col.row(align=True)
+            row.prop(trails, "path_color_mode", text="Cor da trail")
+            row.operator("asc.apply_palette", text="", icon='COLOR')
         layout.prop(settings, "hide_on_playback")
         box = layout.box()
         box.scale_y = 0.8
         for line in ("Arrastar losango: grab · roda/[ ]: raio",
+                     "Pontas da régua: raio passado/futuro (Shift: os dois)",
                      "Arrastar ponto: arco · B: quebrar tangente",
                      "Ctrl+losango: retime · Ctrl+ponto: spacing",
                      "Shift: precisão · Esc/RMB: cancelar",
                      "Shift+Alt+K: ativar a ferramenta"):
             box.label(text=line)
+
+
+class ASC_OT_apply_palette(bpy.types.Operator):
+    """Reaplica a paleta do Animation Sculptor às trails e ao onion skin: passado vermelho, futuro verde"""
+    bl_idname = "asc.apply_palette"
+    bl_label = "Paleta Animation Sculptor"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        from ..trails import provider
+
+        if not provider.apply_palette(context.scene):
+            return {'CANCELLED'}
+        settings = getattr(context.scene, "asc_sculpt", None)
+        if settings is not None:
+            settings.palette_applied = True
+        return {'FINISHED'}
 
 
 class ASC_PT_breakdown(_Base, bpy.types.Panel):
@@ -139,7 +163,7 @@ class ASC_PT_stats(_Base, bpy.types.Panel):
                        f"({trail_stats['engines'] or '-'})")
 
 
-classes = (ASC_PT_main, ASC_PT_tool, ASC_PT_breakdown, ASC_PT_stats)
+classes = (ASC_OT_apply_palette, ASC_PT_main, ASC_PT_tool, ASC_PT_breakdown, ASC_PT_stats)
 
 
 def register():
