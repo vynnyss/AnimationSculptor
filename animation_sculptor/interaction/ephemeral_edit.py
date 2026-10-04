@@ -238,6 +238,10 @@ class ChainEdit:
         self.delta = np.asarray(tuple(delta_world), dtype=np.float64)
         self.result = ephemeral.sculpt(self.chain, self.weights, self.delta, self.orientation,
                                        solver=self.solver, pins=self.pin_data, target=target)
+        self._write()
+
+    def _write(self):
+        """Dense keys of every edited channel from ``self.result``."""
         rotations = self._rotations()
         start = int(self.frames[0])
         for name, channel, axis in self.channels:
@@ -445,3 +449,30 @@ class ChainEdit:
 
     def restore(self):
         self.snapshot.restore()
+
+
+class RotateEdit(ChainEdit):
+    """The "Girar" gesture (ADR 0014): turn one bone about its head over the time window — about the view
+    axis (trackball, the default) or about the bone's own axis (twist). Same snapshot / dense keys / undo /
+    Esc as ``ChainEdit``; nothing else of the chain machinery (no skin follow-up, no aim)."""
+
+    kind = "ROTATE"
+
+    def __init__(self, ob, bone, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH", view_axis=(0.0, 0.0, 1.0)):
+        super().__init__(ob, [bone], frame, radius_past, radius_future, shape, scope="TIP")
+        self.angle = 0.0
+        self.twist = False
+        self.view_axis = np.asarray(view_axis, dtype=np.float64)
+
+    def apply_rotation(self, angle, twist=False):
+        self.angle, self.twist = float(angle), bool(twist)
+        axis = self.chain.world()[:, -1, :3, 1] if self.twist else self.view_axis
+        self.result = ephemeral.rotate(self.chain, self.weights, axis, self.angle)
+        self._write()
+
+    def apply(self, delta_world=None, target=None):
+        """Re-apply the current turn (``set_radii`` calls this after sampling the new window)."""
+        self.apply_rotation(self.angle, self.twist)
+
+    def finish(self):
+        pass

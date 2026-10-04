@@ -5,7 +5,8 @@ import bpy
 
 CATEGORY = "Animation Sculptor"
 TOOL_ID = "animation_sculptor.sculpt"   # interaction.sculpt_tool ids (no import: ui must load first)
-TOOL_IDS = ("animation_sculptor.tip", TOOL_ID, "animation_sculptor.body", "animation_sculptor.smooth")
+TOOL_IDS = ("animation_sculptor.tip", TOOL_ID, "animation_sculptor.body", "animation_sculptor.rotate",
+            "animation_sculptor.smooth")
 
 
 def _tool_active(context):
@@ -94,7 +95,8 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
         box = layout.box()
         box.scale_y = 0.8
         for line in ("Corpo: arraste o corpo do personagem (pose/arco no frame atual)",
-                     "Ferramentas na barra lateral: Ponta · Membro · Corpo · Smooth",
+                     "Ferramentas na barra lateral: Ponta · Membro · Corpo · Girar · Smooth",
+                     "Segure R e arraste: gira a parte (Shift ao começar: torção)",
                      "Trail: losango = grab · ponto = arco · Ctrl = retime/spacing",
                      "Pontas da régua: raio passado/futuro (Shift: os dois) · roda/[ ]: raio",
                      "Shift: precisão · Esc/RMB: cancelar · Shift+Alt+K: ferramenta"):
