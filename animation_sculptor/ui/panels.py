@@ -22,7 +22,19 @@ class ASC_PT_main(bpy.types.Panel):
         elif ob.mode != 'POSE':
             col.label(text="Entre em Pose Mode", icon='INFO')
         else:
-            col.label(text=f"Rig: {ob.name}", icon='ARMATURE_DATA')
+            from .. import rig
+
+            adapter = rig.get_adapter(ob)
+            col.label(text=f"Rig: {ob.name} ({adapter.id})", icon='ARMATURE_DATA')
+            pb = context.active_pose_bone
+            if pb is not None:
+                info = adapter.classify(ob, pb.name)
+                if info is None:
+                    col.label(text=f"{pb.name}: não é controle", icon='LOCKED')
+                else:
+                    caps = " + ".join(sorted(c.lower() for c in info.capabilities)) or "travado"
+                    concept = f" · {info.concept}" if info.concept else ""
+                    col.label(text=f"{pb.name}{concept}: {caps}", icon='BONE_DATA')
         trails = getattr(context.scene, "asc_trails", None)
         if trails is not None:
             row = layout.row(align=True)

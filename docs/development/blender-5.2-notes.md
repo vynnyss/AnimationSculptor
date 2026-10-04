@@ -79,3 +79,8 @@ Nomes de propriedades de `bpy.ops.export_scene.gltf` a confirmar ⏳: `export_fo
 - Nomes de controles e props `IK_FK` (0 = IK, 1 = FK), `IK_parent`, `pole_parent`, `IK_Stretch`, `FK_limb_follow`, `pole_vector` em `upper_arm_parent.*`/`thigh_parent.*` ✅ — tabela em [rig-adapter](../design/rig-adapter.md#rigifyadapter).
 - Controles principais em `QUATERNION` ✅; exceções em `YXZ` (shoulder, breast) e `ZXY` (tweaks, `*_ik` de upper_arm/thigh, `foot_heel_ik`).
 - `rig_ui.py` (operadores de snap) só registra com auto-exec de scripts ligado; em `--background --factory-startup` não existe ✅.
+- Rigify deixa `location` **destravada** em `upper_arm_fk.*` e `thigh_fk.*` (raízes das cadeias FK) ✅ (rig gerado + personagem, 2026-10-03): os locks não bastam para classificar FK como só de rotação; o adapter veta a translação por conceito.
+- O rig gerado carrega ~114 drivers em propriedades de pose ✅: "tem driver" não implica que o espaço de um bone varie; checar por ancestral (data_path `pose.bones["<nome>"]...`), constraints e animação do objeto.
+- Controles IK (`hand_ik`, `foot_ik`) têm pai `MCH-*.parent` com constraint Armature ⇒ o espaço de `location` varia com o rig inteiro (nunca constante); `root` sem animação no objeto é constante ✅.
+- `P(f)` por frame stepping (`frame_set` + 4 `Object.convert_space`) = 0,69 ms/frame no `hand_ik.R` do personagem ✅.
+- Bone com `use_connect` ignora a `location` da pose (a posição vem do pai) ✅: nunca é alvo de translação.

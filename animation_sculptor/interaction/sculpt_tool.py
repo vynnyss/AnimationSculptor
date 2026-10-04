@@ -16,6 +16,7 @@ from mathutils import Vector
 
 import numpy as np
 
+from .. import rig
 from ..anim import action_io, spaces
 from ..anim.snapshot import Snapshot
 from ..core import bezier, sculpt_ops
@@ -63,16 +64,10 @@ class _GrabEdit:
         return bool(self.channels)
 
     def prefetch(self, frames):
-        """P(f) for every trail frame (frame stepping; the edited control never drives its own parent).
-        Returns to the gesture frame."""
+        """P(f) for every trail frame (anim/spaces; the edited control never drives its own parent)."""
         scene = bpy.context.scene
-        mats = []
-        for f in frames:
-            scene.frame_set(int(f))
-            mats.append(np.array(spaces.location_space(self.ob, self.pb), dtype=np.float64))
-        scene.frame_set(self.frame)
+        self.p_cache, self.space_constant = spaces.prefetch(self.ob, self.pb, frames, scene)
         self.trail_frames = np.asarray(frames, dtype=np.float64)
-        self.p_cache = np.array(mats).reshape(-1, 4, 4)
 
     def preview(self):
         """Predicted world trail P(f) @ location(f); location(f) from the edited curves (core.bezier)."""
@@ -115,13 +110,16 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         pb = ob.pose.bones.get(bone) if ob is not None and ob.pose is not None else None
         if pb is None:
             return "controle não encontrado"
+        info = rig.get_adapter(ob).classify(ob, bone)
+        if info is None:
+            return "não é um controle do rig (MCH/ORG/DEF)"
+        if not info.translates:
+            return "controle só de rotação: sculpt espacial de FK no Escopo 4 (use tempo: Ctrl+arrastar)"
         reason = action_io.refusal(ob, pb, "location")
         if reason:
             return reason
         if not action_io.bone_has_key(ob, pb, frame):
             return "sem key neste frame (arc drag de in-between: próximo passo)"
-        if all(pb.lock_location):
-            return "location travada nos 3 eixos"
         self.edit = _GrabEdit(ob, pb, frame)
         if not self.edit.editable:
             return "sem key de location editável neste frame"

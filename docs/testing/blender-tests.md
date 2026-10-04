@@ -25,6 +25,8 @@ Testes existentes:
 - `tests/blender/test_bezier_parity.py` (2 testes) — paridade bit a bit de `core.bezier.evaluate` com `FCurve.evaluate`: 300 curvas aleatórias (seed fixa; todos os tipos de handle, CONSTANT/LINEAR/BEZIER, extrapolação CONSTANT/LINEAR, handles FREE longos que criam sobreposição e laços) × 801 tempos, erro máximo 0; e todas as curvas do rig público.
 - `tests/blender/test_action_io.py` (7 testes) — `anim/action_io` e `anim/snapshot`: channelbag e F-Curves do bone; ida e volta sem perdas; escrita muda o número de keys; handles `ALIGNED` colineares sobrevivem ao `update()`; `ensure_channel`/`ensure_key`; snapshot restaura bit a bit (incluindo curvas criadas e keys inseridas); recusas.
 - `tests/blender/test_sculpt_gesture.py` (14 funções, 27 casos com parametrização) — spike de interação via `execute` paramétrico do operador (`obj_name`, `bone`, `frame`, `delta`), no rig público: classes registradas (tool, gizmo, operador); o grab move o controle pelo delta de mundo (< 1e-4 m) em `hand_ik.L` (frame 12), `foot_ik.R` (24) e `torso` (12); só a key do frame editado muda; delta zero = identidade (invariante 1); eixo travado não se move; recusas com driver em `location`, NLA ativa e frame sem key; trails retomadas após o gesto; `location_space` mapeia `location` → head (`hand_ik.L`, `foot_ik.R`, `torso`, `upper_arm_fk.R` × frames 1/7/12, tol 1e-5).
+- `tests/blender/test_rig_adapter.py` (4 testes) — `rig/`: adapter Rigify no rig público gerado (detecção, conceitos → bones existentes, capacidades, `IK_FK`, nenhum `MCH/ORG/DEF` entre os controles; roda no CI); o mesmo no personagem local (`attack_rig`; pula sem o asset); armature simples sem Rigify ⇒ adapter genérico; o gesto recusa FK e mecanismos (`MCH-`) com os motivos do adapter.
+- `tests/blender/test_spaces.py` (5 funções, 7 casos; `prefetch` parametrizado em 3 bones) — `anim/spaces`: `prefetch` reproduz `P(f) · location(f)` = head avaliado em todos os frames (`hand_ik.L`, `foot_ik.R`, `torso`); controle IK do Rigify nunca é constante; `root` sem animação é constante e usa uma única avaliação; animação no objeto do armature quebra a constância; profiling do prefetch no personagem local (não bloqueante, só falha acima de 50 ms/frame; mediu 0,69 ms/frame; pula sem o asset).
 
 ## Testes de UI (eventos simulados)
 
@@ -45,7 +47,7 @@ Existentes:
 - `attack_rig` — abre o asset local de ataque (Vale); pula se não existir.
 
 Planejadas:
-- `simple_rig` — armature de 3 bones sem Rigify (adapter genérico).
+- `simple_rig` — armature de 3 bones sem Rigify (adapter genérico). Hoje o teste do genérico monta o armature dentro do próprio teste.
 - `force_step_engine` — configura o engine do LMP em `STEP` (native solver exige janela).
 
 ## Casos por tema
@@ -55,8 +57,8 @@ Planejadas:
 | Action I/O | **feito** (`test_action_io.py`): ler canais por slot/channelbag; `ensure` de F-Curve ausente; ida e volta `fcurve_model` sem perdas; snapshot bit a bit; recusa com drivers/NLA/modificadores |
 | Paridade Bézier | **feito** (`test_bezier_parity.py`): `core.bezier.evaluate` vs `FCurve.evaluate` em curvas aleatórias (seed fixa), todos os tipos de handle, erro 0 |
 | Handles | **feito**: escrever ALIGNED colinear + `update()` ⇒ inalterado. Falta: conversão AUTO→ALIGNED |
-| `P(f)` | **feito** (`test_location_space_maps_location_to_head`): `P · location` = head avaliado para `hand_ik.L`, `foot_ik.R`, `torso`, `upper_arm_fk.R` em vários frames (tol 1e-5), incluindo bones com `use_local_location = False`. Falta: `P(f) · local(f)` em todos os frames via cache/prefetch e detecção de `P` constante |
-| Rigify adapter | detecção; conceitos → bones existentes; capacidades; `IK_FK`; nenhum controle `MCH/ORG/DEF` |
+| `P(f)` | **feito** (`test_location_space_maps_location_to_head`, `test_spaces.py`): `P · location` = head avaliado para `hand_ik.L`, `foot_ik.R`, `torso`, `upper_arm_fk.R` em vários frames (tol 1e-5), incluindo bones com `use_local_location = False`; `prefetch` = head avaliado em todos os frames; detecção de `P` constante (positivo, negativo e atalho de uma avaliação); custo no personagem |
+| Rigify adapter | **feito** (`test_rig.py` unit com armatures falsos; `test_rig_adapter.py`): detecção; conceitos → bones existentes; capacidades; `IK_FK`; nenhum controle `MCH/ORG/DEF`; FK só de rotação; genérico no armature simples; recusas do gesto |
 | Grab/Arc (via core + escrita) | Δw aplicado ⇒ head avaliado no frame move Δw (tol 1e-4); keys/timing preservados no arc |
 | Retime/Spacing | todos os canais do personagem movidos; ordem preservada; caminho preservado (amostrado) |
 | Operador | `invoke` com evento sintético não é viável em background ⇒ operador expõe `execute` paramétrico (mesma lógica do gesto) para teste; o fluxo real (hover, press, drag, release, Esc) é coberto pelos testes de UI com eventos simulados |
