@@ -77,6 +77,13 @@ def _upd_show_rig(self, context):
                     overlay.show_bones = self.show_rig
 
 
+def _upd_mode(self, context):
+    """The Trail mode needs the trails: switching to it turns them on (the Corpo mode leaves them as they are)."""
+    scene = getattr(context, "scene", None)
+    if scene is not None and self.interaction_mode == 'TRAIL':
+        _provider().set_enabled(scene, True)
+
+
 def _upd_linked(self, _context):
     if self.radius_linked and self.radius_future != self.radius_past:
         self.radius_future = self.radius_past
@@ -114,7 +121,7 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         name="Modo",
         items=(('BODY', "Corpo", "Agarre o corpo do personagem: pose e arco no frame atual"),
                ('TRAIL', "Trail", "Agarre a trajetória: timing e spacing (Ctrl+arrastar), como nas trails")),
-        default='BODY',
+        default='BODY', update=_upd_mode,
     )
     show_rig: BoolProperty(
         name="Ligar Rigify",

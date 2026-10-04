@@ -111,8 +111,8 @@ class RigAdapter:
         return deform_bone, CHAIN, ""
 
     def ephemeral_aim(self, arm_ob, bone_name: str, scope: str):
-        """Bone to aim at the target after the chain moved (two stages), or None."""
-        return None
+        """Bones aimed after the chain moved (decision 10), root first, ending at the dragged one; [] = none."""
+        return []
 
     def ephemeral_pins(self, arm_ob, chain):
         """(chain bone, limb bones) whose end stays put while the ``Corpo`` chain turns: the single-child

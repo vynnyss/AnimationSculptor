@@ -238,9 +238,11 @@ def _apply_locks(new, old, mode, locks):
     return out
 
 
-def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solver=AUTO, pins=()) -> Result:
+def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solver=AUTO, pins=(),
+           target=None) -> Result:
     """Run the ephemeral gesture. ``weights`` (N,) in [0, 1]; ``delta`` (3,) world drag; ``solver`` AUTO
-    (by chain length) or DLS; ``pins``: FK limbs whose end stays put (``Pin``)."""
+    (by chain length) or DLS; ``pins``: FK limbs whose end stays put (``Pin``); ``target`` (N, 3) overrides
+    ``tip + w·delta`` (corrections measured on the real rig)."""
     reason = check(chain) or next((check(p.limb) for p in pins if check(p.limb)), "")
     if reason:
         raise ValueError(reason)
@@ -249,7 +251,7 @@ def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solv
     rot3 = chain.rotation_matrices()
     world = chain.world(rot3)
     tip0 = chain.point_world(world)
-    target = tip0 + weights[:, None] * delta[None, :]
+    target = tip0 + weights[:, None] * delta[None, :] if target is None else np.asarray(target, dtype=np.float64)
     active = weights > 0.0
     deltas = _own_deltas(chain, world, target, orientation, bend_axis, solver)
 

@@ -5,7 +5,7 @@ import bpy
 from bpy.app.handlers import persistent
 
 from .. import rig
-from . import gizmo, overlay, sculpt_tool, state
+from . import body_pick, gizmo, overlay, sculpt_tool, state
 
 _modules = (gizmo, sculpt_tool, overlay)  # the tool references the gizmo group: register it first
 
@@ -14,6 +14,7 @@ _modules = (gizmo, sculpt_tool, overlay)  # the tool references the gizmo group:
 def _load_post(*_args):
     """Derived state never survives a file change (adapters are re-detected, hover/gesture dropped)."""
     rig.clear_cache()
+    body_pick.clear_cache()
     state.reset()
 
 

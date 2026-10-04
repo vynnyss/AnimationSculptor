@@ -31,6 +31,7 @@ def _wait(cond, timeout=10.0, step=0.1):
 
 def scenario(h):
     bpy.ops.wm.open_mainfile(filepath=os.environ["ASC_UI_RIG"], load_ui=False)
+    bpy.context.scene.asc_sculpt.interaction_mode = 'TRAIL'     # trail gestures (ADR 0013: Corpo is the default)
     yield 0.5
     provider = h.addon("trails.provider")
     picking = h.addon("interaction.picking")

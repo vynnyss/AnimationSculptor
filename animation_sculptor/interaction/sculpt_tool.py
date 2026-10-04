@@ -22,13 +22,26 @@ from ..anim.snapshot import Snapshot
 from ..core import bezier, falloff, ruler, sculpt_ops, timing_ops
 from ..trails import provider
 from ..ui import prefs, props
-from . import ephemeral_edit, gizmo, hud, picking, state, timing_edit
+from . import ephemeral_edit, gizmo, hud, picking, smooth_edit, state, timing_edit
 
 
 def _settings():
     return props.get()
 
-TOOL_ID = "animation_sculptor.sculpt"
+TOOL_ID = "animation_sculptor.sculpt"          # Membro (kept id: keymaps and files of 0.3–0.6 point to it)
+TOOL_TIP = "animation_sculptor.tip"
+TOOL_BODY = "animation_sculptor.body"
+TOOL_SMOOTH = "animation_sculptor.smooth"
+TOOL_IDS = (TOOL_TIP, TOOL_ID, TOOL_BODY, TOOL_SMOOTH)
+TOOL_SCOPES = {TOOL_TIP: "TIP", TOOL_ID: "LIMB", TOOL_BODY: "BODY"}
+
+
+def active_tool_id(context):
+    try:
+        tool = context.workspace.tools.from_space_view3d_mode(context.mode, create=False)
+    except Exception:
+        return None
+    return tool.idname if tool is not None else None
 RADIUS_KEYS = {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'LEFT_BRACKET', 'RIGHT_BRACKET'}
 PASSIVE_KEYS = {'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL', 'LEFT_ALT', 'RIGHT_ALT',
                 'OSKEY', 'LEFTMOUSE', 'MIDDLEMOUSE', 'B'} | RADIUS_KEYS
@@ -223,6 +236,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     mode: EnumProperty(items=(('AUTO', "Auto", "Grab on key points, arc drag on in-betweens"),
                               ('GRAB', "Grab", ""), ('ARC', "Arc", ""),
                               ('CHAIN', "Cadeia FK", "Ephemeral rig on a rotation-only control (dense keys)"),
+                              ('SMOOTH', "Smooth", "Smooth brush: `passes` Gaussian passes in the time window"),
                               ('RETIME', "Retime", "Move the pose key at frame to new_frame"),
                               ('SPACING', "Spacing", "Ease/favor of the segment around frame")),
                        default='AUTO', options={'SKIP_SAVE'})
@@ -235,6 +249,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     chain_scope: EnumProperty(items=(('SCENE', "Cena", "Use Scene.asc_sculpt.ephemeral_scope"),
                                      ('LIMB', "Membro", ""), ('TIP', "Ponta", ""), ('BODY', "Corpo", "")),
                               default='SCENE', options={'SKIP_SAVE'})
+    point: FloatVectorProperty(size=3, subtype='TRANSLATION', unit='LENGTH', options={'SKIP_SAVE'},
+                               description="Grabbed spot on the body (world, at frame); with use_point")
+    use_point: BoolProperty(default=False, options={'SKIP_SAVE'})
+    passes: IntProperty(default=1, min=0, options={'SKIP_SAVE'}, description="Smooth passes (execute)")
     from_bone: BoolProperty(default=False, options={'SKIP_SAVE'},
                             description="The gesture grabs the bone's tail at the current frame (no trail)")
     orientation: EnumProperty(items=(('SCENE', "Cena", "Use Scene.asc_sculpt.tip_orientation"),
@@ -301,10 +319,31 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         return ""
 
     def _scope(self):
-        settings = _settings()
+        """Gesture scope: the operator's, else the active tool's (Ponta/Membro/Corpo), else the scene's."""
         if self.chain_scope != 'SCENE':
             return self.chain_scope
+        scope = TOOL_SCOPES.get(active_tool_id(bpy.context))
+        if scope is not None:
+            return scope
+        settings = _settings()
         return settings.ephemeral_scope if settings is not None else rig.LIMB
+
+    def _grab_point(self):
+        return Vector(self.point) if self.use_point else getattr(self, "_point", None)
+
+    def _begin_smooth(self, ob, obj_name, bones, frame, radii):
+        settings = _settings()
+        for name in bones:
+            if ob.pose.bones.get(name) is None:
+                return "controle não encontrado"
+        self.edit = smooth_edit.SmoothEdit(ob, bones, frame, radii[0], radii[1],
+                                           settings.falloff if settings is not None else "SMOOTH",
+                                           settings.smooth_strength if settings is not None else 0.5,
+                                           settings.smooth_sigma if settings is not None else 1.5)
+        if not self.edit.editable:
+            return self.edit.reason
+        self.obj_name, self.bone, self.frame = obj_name, bones[-1], frame
+        return ""
 
     def _begin_chain(self, ob, obj_name, bone, frame, radii):
         """The ephemeral rig turns the control's chain (ADR 0011): rotation-only controls, or any control
@@ -321,10 +360,17 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if reason:
             return reason
         pins = adapter.ephemeral_pins(ob, bones)[0] if scope == rig.BODY else []
+        aim = adapter.ephemeral_aim(ob, bone, scope)
+        point = self._grab_point()
+        if point is None and bone not in bones:     # the dragged control is aimed after the chain: its tail
+            if bpy.context.scene.frame_current != frame:
+                bpy.context.scene.frame_set(frame)
+            point = ob.matrix_world @ ob.pose.bones[bone].tail
         t0 = time.perf_counter()
         self.edit = ephemeral_edit.ChainEdit(ob, bones, frame, radii[0], radii[1],
                                              settings.falloff if settings is not None else "SMOOTH", orientation,
-                                             scope=scope, pins=pins)
+                                             scope=scope, pins=pins, point_world=point,
+                                             point_bone=bone if point is not None else None, aim_bones=aim)
         state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
         if self.edit.reason:
             return self.edit.reason
@@ -334,6 +380,19 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         return ""
 
     def execute(self, context):
+        if self.mode == 'SMOOTH':
+            ob = bpy.data.objects.get(self.obj_name)
+            if ob is None:
+                return {'CANCELLED'}
+            radii = (self.radius if self.radius_past < 0 else self.radius_past,
+                     self.radius if self.radius_future < 0 else self.radius_future)
+            reason = self._begin_smooth(ob, self.obj_name, [self.bone], self.frame, radii)
+            if reason:
+                self.report({'WARNING'}, f"Animation Sculptor: {reason}")
+                return {'CANCELLED'}
+            with provider.suspended(keys=None):
+                self.edit.apply_passes(self.passes)
+            return {'FINISHED'}
         if self.mode in {'RETIME', 'SPACING'}:
             reason = self._begin_timing(context, self.obj_name, self.bone, self.frame, self.mode, self.scope,
                                         self.policy)
@@ -358,6 +417,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             if self.edit.kind == "ARC":
                 self.edit.break_tangent = self.break_tangent
             self.edit.apply(self.delta)
+            if self.edit.kind == "CHAIN":
+                self.edit.finish()
         return {'FINISHED'}
 
     def invoke(self, context, event):
@@ -369,14 +430,29 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         hit = state.HOVER
         if hit is None or context.region_data is None:
             return {'PASS_THROUGH'}
-        if event.ctrl:
+        if hit.reason:
+            return self._refuse(context, hit, hit.reason)
+        tool = active_tool_id(context)
+        if tool in TOOL_IDS:
+            state.LAST_TOOL = tool
+        settings = _settings()
+        radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
+        if tool == TOOL_SMOOTH:
+            return self._invoke_smooth(context, event, hit, radii)
+        if event.ctrl and not hit.on_body:
             return self._invoke_timing(context, event, hit)
         mode = 'GRAB' if hit.is_key else 'ARC'
         self.from_bone = bool(getattr(hit, "on_bone", False))
+        self._point = None
         if self.from_bone:
             mode = 'CHAIN'
-        settings = _settings()
-        radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
+        if hit.on_body:
+            # grabbing the body: an IK control is grabbed (key at this frame) or arced; anything else turns
+            # its chain with the ephemeral rig, dragging the grabbed spot (ADR 0013)
+            if hit.kind == rig.IK:
+                mode = 'GRAB' if hit.is_key else 'ARC'
+            else:
+                mode, self._point = 'CHAIN', Vector(hit.world)
         reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, radii)
         if reason:
             return self._refuse(context, hit, reason)
@@ -393,11 +469,47 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         state.HOVER = None
         state.REFUSAL = None
         state.GESTURE = {"kind": self.edit.kind, "world": tuple(self.origin), "bone": hit.bone,
-                         "frame": hit.frame, "preview": self.edit.preview(), "falloff": []}
+                         "frame": hit.frame, "preview": self.edit.preview(), "falloff": [],
+                         "mesh": hit.mesh, "deform": hit.deform}
         self._update_falloff()
         context.window_manager.modal_handler_add(self)
         self._header(context)
         return {'RUNNING_MODAL'}
+
+    def _invoke_smooth(self, context, event, hit, radii):
+        ob = bpy.data.objects.get(hit.obj_name)
+        if ob is None:
+            return {'CANCELLED'}
+        if context.scene.frame_current != hit.frame:
+            context.scene.frame_set(hit.frame)
+        reason = self._begin_smooth(ob, hit.obj_name, [hit.bone], hit.frame, radii)
+        if reason:
+            return self._refuse(context, hit, reason)
+        self.origin = Vector(hit.world)
+        self.last_mouse = (event.mouse_region_x, event.mouse_region_y)
+        self.accum = Vector((0.0, 0.0, 0.0))
+        self.stroke = 0.0
+        provider.suspend()
+        state.HOVER = None
+        state.REFUSAL = None
+        state.GESTURE = {"kind": "SMOOTH", "world": tuple(self.origin), "bone": hit.bone, "frame": hit.frame,
+                         "preview": None, "falloff": [], "mesh": hit.mesh, "deform": hit.deform, "label": ""}
+        context.window_manager.modal_handler_add(self)
+        self._header(context)
+        return {'RUNNING_MODAL'}
+
+    def _move_smooth(self, context, event):
+        from ..core import smooth
+
+        mouse = (event.mouse_region_x, event.mouse_region_y)
+        self.stroke += ((mouse[0] - self.last_mouse[0]) ** 2 + (mouse[1] - self.last_mouse[1]) ** 2) ** 0.5
+        self.last_mouse = mouse
+        passes = smooth.passes_for_drag(self.stroke)
+        if passes != self.edit.passes:
+            self.edit.apply_passes(passes)
+            state.GESTURE["label"] = f"smooth ×{passes}"
+        self._header(context)
+        context.area.tag_redraw()
 
     def _invoke_timing(self, context, event, hit):
         mode = 'RETIME' if hit.is_key else 'SPACING'
@@ -495,6 +607,12 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
 
     def _header(self, context):
         hint = "   Shift: precisão · Esc/RMB: cancelar · soltar: confirmar"
+        if self.edit.kind == "SMOOTH":
+            e = self.edit
+            context.area.header_text_set(
+                f"Smooth {e.bone} @ {self.frame}   passes {e.passes} · força {e.strength:.0%} · janela "
+                f"←{e.radius_past:g} · {e.radius_future:g}→   (arraste sobre a parte para suavizar mais)" + hint)
+            return
         if self.edit.kind == "RETIME":
             e = self.edit
             limits = f"entre {e.low:g} e {e.high:g}" if e.high != float("inf") and e.low != float("-inf") else ""
@@ -547,6 +665,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         context.area.tag_redraw()
 
     def modal(self, context, event):
+        if self.edit.kind == "SMOOTH":
+            return self._modal_smooth(context, event)
         if event.type == 'MOUSEMOVE' and self.edit.kind in {"RETIME", "SPACING"}:
             t0 = time.perf_counter()
             self._move_timing(context, event)
@@ -605,13 +725,34 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             return {'FINISHED', 'PASS_THROUGH'}
         return {'RUNNING_MODAL'}
 
+    def _modal_smooth(self, context, event):
+        if event.type == 'MOUSEMOVE':
+            t0 = time.perf_counter()
+            self._move_smooth(context, event)
+            state.STATS["last_move_ms"] = (time.perf_counter() - t0) * 1000.0
+            return {'RUNNING_MODAL'}
+        if event.type == 'LEFTMOUSE' and event.value == 'RELEASE':
+            if self.edit.passes == 0:
+                self.edit.restore()
+                self._end(context, cancel=True)
+                return {'CANCELLED'}
+            self._end(context, cancel=False)
+            return {'FINISHED'}
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self.edit.restore()
+            self._end(context, cancel=True)
+            return {'CANCELLED'}
+        return {'RUNNING_MODAL'}
+
     def _end(self, context, cancel):
         state.GESTURE = None
         context.area.header_text_set(None)
         context.area.tag_redraw()
         # cancel restored the F-Curves bit for bit: the cached trail is still the truth. Timing gestures
         # change every channel of the scope, so every trail is recomputed.
-        timing = self.edit.kind in {"RETIME", "SPACING", "CHAIN"}     # several bones change
+        if not cancel and self.edit.kind == "CHAIN":
+            self.edit.finish()                  # second stage (aim), if any
+        timing = self.edit.kind in {"RETIME", "SPACING", "CHAIN", "SMOOTH"}     # several bones change
         provider.resume(keys=[] if cancel else (None if timing else [(self.obj_name, self.bone)]))
         if not cancel:
             # recompute the edited trail now instead of waiting for the engine's timer
@@ -700,50 +841,98 @@ class ASC_OT_time_window(bpy.types.Operator):
         context.area.tag_redraw()
 
 
-class ASC_WT_sculpt(bpy.types.WorkSpaceTool):
+def _draw_settings(context, layout, tool):
+    """Tool settings bar (top of the viewport, View › Tool Settings): the gesture window."""
+    s = props.get(context)
+    if s is None:
+        return
+    row = layout.row(align=True)
+    row.prop(s, "radius_past", text="Passado")
+    row.prop(s, "radius_linked", text="", icon='LINKED' if s.radius_linked else 'UNLINKED')
+    row.prop(s, "radius_future", text="Futuro")
+    layout.prop(s, "falloff", text="")
+    if tool is not None and tool.idname == TOOL_SMOOTH:
+        layout.prop(s, "smooth_strength", text="Força")
+    elif tool is not None and tool.idname in (TOOL_ID, TOOL_BODY):
+        layout.prop(s, "tip_orientation", text="")
+
+
+class _SculptTool:
+    """Common to the Animation Sculptor tools (left toolbar, Pose Mode): same gizmo group and operator;
+    the tool sets the gesture's scope (ADR 0013, docs/design/sculpt-ux.md)."""
     bl_space_type = 'VIEW_3D'
     bl_context_mode = 'POSE'
-    bl_idname = TOOL_ID
-    bl_label = "Animation Sculptor"
-    bl_description = "Esculpe o movimento direto nas trajetórias: arraste pontos da trail"
-    bl_icon = "ops.pose.breakdowner"
     bl_widget = gizmo.ASC_GGT_trails.bl_idname
-    # clicks that miss the trail keep the usual bone selection
+    # clicks that miss the body / the trail keep the usual bone selection
     bl_keymap = (
         ("view3d.select", {"type": 'LEFTMOUSE', "value": 'CLICK'}, {"properties": [("deselect_all", True)]}),
         ("view3d.select", {"type": 'LEFTMOUSE', "value": 'CLICK', "shift": True}, {"properties": [("toggle", True)]}),
         ("view3d.select_box", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'}, None),
     )
-
-    @staticmethod
-    def draw_settings(context, layout, tool):
-        """Tool settings bar (top of the viewport): the gesture window, same fields as the Gestos panel."""
-        s = props.get(context)
-        if s is None:
-            return
-        row = layout.row(align=True)
-        row.prop(s, "radius_past", text="Passado")
-        row.prop(s, "radius_linked", text="", icon='LINKED' if s.radius_linked else 'UNLINKED')
-        row.prop(s, "radius_future", text="Futuro")
-        layout.prop(s, "falloff", text="")
-        layout.prop(s, "ephemeral_scope", text="FK")
-        layout.prop(s, "tip_orientation", text="")
-        layout.prop(s, "show_time_ruler", text="Régua", icon='TIME')
+    draw_settings = staticmethod(_draw_settings)
 
 
-classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window)
+class ASC_WT_tip(_SculptTool, bpy.types.WorkSpaceTool):
+    bl_idname = TOOL_TIP
+    bl_label = "Ponta"
+    bl_description = ("Arraste uma parte do corpo: só aquela parte gira para seguir o mouse (keys em todo frame "
+                      "da janela da régua). Num membro em IK, move o controle IK")
+    bl_icon = "ops.pose.relax"
+
+
+class ASC_WT_sculpt(_SculptTool, bpy.types.WorkSpaceTool):
+    bl_idname = TOOL_ID
+    bl_label = "Membro"
+    bl_description = ("Arraste uma parte do corpo: o membro inteiro até ela (braço, perna) gira para seguir o "
+                      "mouse. Num membro em IK, move o controle IK")
+    bl_icon = "ops.pose.breakdowner"
+
+
+class ASC_WT_body(_SculptTool, bpy.types.WorkSpaceTool):
+    bl_idname = TOOL_BODY
+    bl_label = "Corpo"
+    bl_description = ("Arraste o tronco, o pescoço ou a cabeça: a coluna inclina para seguir o mouse e os pés "
+                      "ficam no lugar")
+    bl_icon = "ops.pose.push"
+
+
+class ASC_WT_smooth(_SculptTool, bpy.types.WorkSpaceTool):
+    bl_idname = TOOL_SMOOTH
+    bl_label = "Smooth"
+    bl_description = "Pincel: arraste sobre uma parte do corpo para suavizar o movimento dela na janela da régua"
+    bl_icon = "ops.gpencil.sculpt_blur"
+
+
+TOOLS = (ASC_WT_tip, ASC_WT_sculpt, ASC_WT_body, ASC_WT_smooth)
+
+
+class ASC_OT_activate_tool(bpy.types.Operator):
+    """Ativa a última ferramenta do Animation Sculptor usada (Membro na primeira vez)"""
+    bl_idname = "asc.activate_tool"
+    bl_label = "Animation Sculptor: ferramenta"
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and ob.type == 'ARMATURE' and ob.mode == 'POSE'
+
+    def execute(self, context):
+        tool = state.LAST_TOOL if state.LAST_TOOL in TOOL_IDS else TOOL_ID
+        return bpy.ops.wm.tool_set_by_id(name=tool)
+
+
+classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool)
 TOOL_HOTKEY = {"type": 'K', "value": 'PRESS', "shift": True, "alt": True}   # free in the default keymap (5.2)
 _keymaps = []
 
 
 def _register_keymap():
-    """Shift+Alt+K in Pose Mode activates the tool (editable in Preferences › Keymap › Pose)."""
+    """Shift+Alt+K in Pose Mode activates the last used tool (editable in Preferences › Keymap › Pose)."""
     kc = bpy.context.window_manager.keyconfigs.addon
     if kc is None:          # background mode
         return
     km = kc.keymaps.new(name="Pose", space_type='EMPTY')
-    kmi = km.keymap_items.new("wm.tool_set_by_id", **TOOL_HOTKEY)
-    kmi.properties.name = TOOL_ID
+    kmi = km.keymap_items.new("asc.activate_tool", **TOOL_HOTKEY)
     _keymaps.append((km, kmi))
 
 
@@ -759,14 +948,21 @@ def _unregister_keymap():
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-    bpy.utils.register_tool(ASC_WT_sculpt, after={"builtin.transform"}, separator=True, group=False)
+    previous = None
+    for tool in TOOLS:
+        if previous is None:
+            bpy.utils.register_tool(tool, after={"builtin.transform"}, separator=True, group=False)
+        else:
+            bpy.utils.register_tool(tool, after={previous}, group=False)
+        previous = tool.bl_idname
     _register_keymap()
 
 
 def unregister():
     _unregister_keymap()
     try:
-        bpy.utils.unregister_tool(ASC_WT_sculpt)
+        for tool in reversed(TOOLS):
+            bpy.utils.unregister_tool(tool)
     except Exception as exc:
         print(f"[Animation Sculptor] unregister_tool: {exc}")
     for cls in reversed(classes):

@@ -10,9 +10,11 @@ import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from ..trails.lmp import compat
-from . import hud, picking, state
+from . import body_pick, hud, picking, state
 
 _handle = None
+_view_handle = None
+COLOR_PART = (0.25, 0.55, 1.0, 0.35)      # body part under the mouse (blue, like the reference talk)
 
 COLOR_KEY = (1.0, 1.0, 1.0, 1.0)
 COLOR_SAMPLED = (0.55, 0.85, 1.0, 1.0)
@@ -143,19 +145,58 @@ def draw_pixel():
         gpu.state.blend_set('NONE')
 
 
+def draw_view():
+    """POST_VIEW: the body part under the mouse (modo Corpo) or being sculpted, tinted blue on the mesh."""
+    context = bpy.context
+    hover, gesture = state.HOVER, state.GESTURE
+    if gesture is not None and gesture.get("mesh"):
+        mesh, deform = gesture["mesh"], gesture.get("deform")
+    elif hover is not None and getattr(hover, "on_body", False):
+        mesh, deform = hover.mesh, hover.deform
+    else:
+        return
+    ob = context.active_object
+    if ob is None or ob.type != 'ARMATURE':
+        return
+    settings = getattr(context.scene, "asc_sculpt", None)
+    screen = context.screen
+    if settings is not None and settings.hide_on_playback and screen is not None and screen.is_animation_playing:
+        return
+    try:
+        pts = body_pick.highlight_geometry(context, mesh, ob, deform)
+        if pts is None or len(pts) == 0:
+            return
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        batch = batch_for_shader(shader, 'TRIS', {"pos": [tuple(p) for p in pts]})
+        gpu.state.blend_set('ALPHA')
+        gpu.state.depth_test_set('LESS_EQUAL')
+        gpu.state.depth_mask_set(False)
+        shader.bind()
+        shader.uniform_float("color", COLOR_PART)
+        batch.draw(shader)
+    except Exception as exc:
+        print(f"[Animation Sculptor] highlight error: {exc}")
+    finally:
+        gpu.state.depth_test_set('NONE')
+        gpu.state.blend_set('NONE')
+
+
 def register():
-    global _handle
+    global _handle, _view_handle
     unregister()
     if bpy.app.background:
         return
     _handle = bpy.types.SpaceView3D.draw_handler_add(draw_pixel, (), 'WINDOW', 'POST_PIXEL')
+    _view_handle = bpy.types.SpaceView3D.draw_handler_add(draw_view, (), 'WINDOW', 'POST_VIEW')
 
 
 def unregister():
-    global _handle
-    if _handle is not None:
-        try:
-            bpy.types.SpaceView3D.draw_handler_remove(_handle, 'WINDOW')
-        except Exception:
-            pass
-        _handle = None
+    global _handle, _view_handle
+    for handle in (_handle, _view_handle):
+        if handle is not None:
+            try:
+                bpy.types.SpaceView3D.draw_handler_remove(handle, 'WINDOW')
+            except Exception:
+                pass
+    _handle = None
+    _view_handle = None

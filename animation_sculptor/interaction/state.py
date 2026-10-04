@@ -8,6 +8,7 @@ STATS = {}        # profiling counters (e.g. last_move_ms)
 REFUSAL = None    # {"world", "frame", "bone", "reason"} of the last refused point (drawn in red)
 RULER_HOVER = None  # 'PAST' / 'FUTURE' end handle of the time ruler under the mouse, or None
 RULER_DRAG = None   # end handle being dragged by asc.time_window, or None
+LAST_TOOL = None    # last Animation Sculptor tool used (Shift+Alt+K)
 RULER_SPAN = 0      # frozen half span (frames) of the ruler while a handle is dragged; 0 = automatic
 
 

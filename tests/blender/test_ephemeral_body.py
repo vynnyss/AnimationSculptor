@@ -126,7 +126,24 @@ def test_rigify_hips_with_ik_legs_is_fine(public_rig):
     assert max(np.linalg.norm(after[f] - feet[f]) for f in range(1, 25)) < 1e-5         # the rig pins IK feet
 
 
-@pytest.mark.parametrize("bone,legs_fk", [("head", False), ("neck", False), ("hips", True)])
+@pytest.mark.parametrize("bone", ["head", "neck"])
+def test_rigify_neck_head_lean_then_aim(public_rig, bone):
+    """Decision 10: Corpo on the neck/head leans torso + chest, then aims the bone at the target."""
+    rig = public_rig
+    _fk_legs(rig, False)
+    before = _tails(rig, bone, range(1, 25))
+    delta = np.array([0.0, -0.06, -0.03])
+    assert _gesture(rig, bone, 12, Vector(delta), radius_past=4, radius_future=4) == {'FINISHED'}
+    after = _tails(rig, bone, range(1, 25))
+    err = np.linalg.norm(after[12] - before[12] - delta)
+    print(f"{bone} two-stage error at f0: {err * 1000:.2f} mm")
+    assert err < 2e-3
+    for f in range(1, 25):
+        if not 8 <= f <= 16:
+            assert np.linalg.norm(after[f] - before[f]) < 1e-5, f
+
+
+@pytest.mark.parametrize("bone,legs_fk", [("hips", True)])
 def test_rigify_non_rigid_chains_are_refused(public_rig, bone, legs_fk):
     rig = public_rig
     _fk_legs(rig, legs_fk)

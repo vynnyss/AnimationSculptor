@@ -143,9 +143,12 @@ class RigifyAdapter(RigAdapter):
         return super().control_for_deform(arm_ob, deform_bone)
 
     def ephemeral_aim(self, arm_ob, bone_name, scope):
-        """Corpo on the neck/head (decision 10): lean torso + chest first, then aim this bone."""
+        """Corpo on the neck/head (decision 10): lean torso + chest first, then aim neck (and head)."""
         base = (self.concept_for(bone_name) or "").partition(".")[0]
-        return bone_name if scope == BODY and base in ("neck", "head") else None
+        if scope != BODY or base not in ("neck", "head"):
+            return []
+        neck = CONCEPT_TO_BONE["neck"]
+        return [neck] if base == "neck" else [neck, bone_name]
 
     def ephemeral_pins(self, arm_ob, chain):
         """Legs in FK keep their feet when the body turns (pinned to the chain root); legs in IK are

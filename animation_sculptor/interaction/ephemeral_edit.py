@@ -20,6 +20,7 @@ from ..core import dense, ephemeral, falloff
 from ..core import kinematics as kin
 from ..core.fcurve_model import ChannelModel
 
+PIVOT_ITERATIONS = 3   # stage 1 of the aim (decision 10): fixed-point steps measured on the rig
 PAD = 1     # frames of weight 0 written on each side of the window (curves created by the gesture stay flat outside)
 BODY = "BODY"
 
@@ -61,10 +62,12 @@ class ChainEdit:
 
     def __init__(self, ob, bones, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH",
                  orientation=ephemeral.WORLD, scope="LIMB", pins=(), point_world=None, point_bone=None,
-                 aim_bone=None):
+                 aim_bones=()):
         """``point_world``: the grabbed spot on the body (world, at ``frame``), rigid with ``point_bone``
-        (default: the chain's last bone); None = the last bone's tail. ``aim_bone``: turned towards the target
-        after the chain (two stages, applied by ``finish``)."""
+        (default: the chain's last bone); None = the last bone's tail. ``aim_bones`` (decision 10, e.g. Rigify
+        ``neck, head``): the chain only leans; ``finish`` then measures the rig and (1) leans further until the
+        first aimed bone's head moved by the drag, (2) with two bones aims the first so the second's head lands
+        where a two-bone IK puts it, (3) aims the last so the grabbed spot (on it) reaches its target."""
         self.ob = ob
         self.bones = list(bones)
         self.bone = self.bones[-1]
@@ -86,7 +89,8 @@ class ChainEdit:
         if scene.frame_current != self.frame:
             scene.frame_set(self.frame)
         self.point_bone = point_bone or self.bone
-        self.aim_bone = aim_bone if aim_bone and aim_bone not in self.bones else None
+        self.aim_bones = [b for b in aim_bones if b not in self.bones]
+        self.aim_bone = self.aim_bones[-1] if self.aim_bones else None
         self.point_local = None             # grabbed point in point_bone's local space (constant)
         if point_world is not None:
             pb = ob.pose.bones[self.point_bone]
@@ -101,11 +105,10 @@ class ChainEdit:
         self.reason = refusal(ob, [b for _j, limb in self.pins for b in limb]) or spaces.chain_rigidity(
             ob, self.bones, [(self.bones[j], limb[0]) for j, limb in self.pins])
         self.edited = self.bones + [b for _j, limb in self.pins for b in limb]
-        self.aim_channels = []      # rotation channels of aim_bone (written by finish)
-        if self.aim_bone:
-            pb = ob.pose.bones[self.aim_bone]
-            channel, size = spaces.rotation_channel(pb)
-            self.aim_channels = [(self.aim_bone, channel, axis) for axis in range(size)]
+        self.aim_channels = []      # rotation channels of the aimed bones (written by finish)
+        for name in self.aim_bones:
+            channel, size = spaces.rotation_channel(ob.pose.bones[name])
+            self.aim_channels += [(name, channel, axis) for axis in range(size)]
         self.channels = []          # (bone name, channel, axis)
         self.snapshot = Snapshot(ob)
         for name in self.edited:
@@ -139,10 +142,16 @@ class ChainEdit:
         scene = bpy.context.scene
         self.frames = self.window_frames()
         extra = [self.point_bone] if self.point_local is not None and self.point_bone != self.bone else []
+        extra += [b for b in self.aim_bones if b not in extra]
         data = spaces.prefetch_chain(self.ob, self.bones, self.frames, scene, extra=extra)
         self.chain = self._chain(data)
         world = self.chain.world()
-        if self.point_local is not None:
+        self.aim_origin = None
+        if self.aim_bone and self.point_local is not None:
+            # stage 1 drags the chain's tail; the grabbed spot's own path is kept for the aim stage
+            self.aim_origin = np.einsum("nij,j->ni", data["extra"][self.aim_bone], np.r_[self.point_local, 1.0])[:, :3]
+            self.pivot_origin = data["extra"][self.aim_bones[0]][:, :3, 3].copy()
+        elif self.point_local is not None:
             p = np.r_[self.point_local, 1.0]
             if extra:   # the point belongs to a bone outside the chain: re-expressed in the last bone per frame
                 pts = np.einsum("nij,j->ni", data["extra"][self.point_bone], p)
@@ -186,10 +195,10 @@ class ChainEdit:
             out.update(zip(limb, rots))
         return out
 
-    def apply(self, delta_world):
+    def apply(self, delta_world, target=None):
         self.delta = np.asarray(tuple(delta_world), dtype=np.float64)
         self.result = ephemeral.sculpt(self.chain, self.weights, self.delta, self.orientation,
-                                       solver=self.solver, pins=self.pin_data)
+                                       solver=self.solver, pins=self.pin_data, target=target)
         rotations = self._rotations()
         start = int(self.frames[0])
         for name, channel, axis in self.channels:
@@ -238,18 +247,60 @@ class ChainEdit:
         return [tuple(p) for p in pts]
 
     def finish(self):
-        """Second stage (decision 10): turn ``aim_bone`` so the grabbed point looks at the target, measured on
-        the rig as it is after the chain moved (frame stepping over the window). No-op without an aim bone."""
-        if not self.aim_bone or self.result is None:
+        """Stages after the chain (decision 10), measured on the rig as it is after each step (frame stepping
+        over the window, fixed number of steps). No-op without aimed bones."""
+        if not self.aim_bones or self.result is None or self.aim_origin is None:
             return
+        active = self.weights > 0.0
+        goal = self.aim_origin + self.weights[:, None] * self.delta[None, :]
+        first, last = self.aim_bones[0], self.aim_bones[-1]
+        # (1) lean further until the first aimed bone's head (base of the neck) moved by w·Δ
+        pivot_goal = self.pivot_origin + self.weights[:, None] * self.delta[None, :]
+        target = self.result.target.copy()
+        for _ in range(PIVOT_ITERATIONS):
+            err = np.where(active[:, None], pivot_goal - self._measure([first])[first][:, :3, 3], 0.0)
+            if np.abs(err).max() < 1e-5:
+                break
+            target = target + err
+            self.apply(self.delta, target=target)
+        p_last = np.r_[self.point_local, 1.0]
+        if len(self.aim_bones) > 1:
+            # (2) aim the first so the last's head goes where a two-bone IK (first head, last head, spot) puts it
+            m = self._measure([first, last])
+            a, b = m[first][:, :3, 3], m[last][:, :3, 3]
+            c = np.einsum("nij,j->ni", m[last], p_last)[:, :3]
+            d1, _d2, _tip = kin.two_bone_ik(a, b, c, goal, m[first][:, :3, 0])
+            b_goal = a + np.einsum("nij,nj->ni", d1, b - a)
+            b_local = np.einsum("nij,nj->ni", np.linalg.inv(m[first]), np.c_[b, np.ones(len(b))])[:, :3]
+            self._aim(first, b_local, b_goal, active)
+        # (3) aim the last so the grabbed spot reaches its target
+        self._aim(last, np.broadcast_to(self.point_local, (len(self.frames), 3)), goal, active)
+
+    def _measure(self, bones):
+        """{bone: (N, 4, 4) world matrix per window frame}, evaluated on the rig (frame stepping)."""
+        scene = bpy.context.scene
+        mw = np.asarray(self.ob.matrix_world, dtype=np.float64)
+        out = {b: np.empty((len(self.frames), 4, 4)) for b in bones}
+        current, sub = scene.frame_current, scene.frame_subframe
+        with spaces.preserve_pose(self.ob):
+            try:
+                for j, f in enumerate(self.frames):
+                    scene.frame_set(int(f))
+                    for b in bones:
+                        out[b][j] = mw @ np.asarray(self.ob.pose.bones[b].matrix, dtype=np.float64)
+            finally:
+                scene.frame_set(current, subframe=sub)
+        return out
+
+    def _aim(self, bone, local_point, goals, active):
+        """Turn ``bone`` about its head (minimal rotation) so its ``local_point`` (N, 3) points at ``goals``
+        (N, 3) on every active frame, measured on the rig; written as dense keys on its rotation channels."""
         scene = bpy.context.scene
         ob = self.ob
-        pb = ob.pose.bones[self.aim_bone]
+        pb = ob.pose.bones[bone]
         mode = pb.rotation_mode
         channel, size = spaces.rotation_channel(pb)
         mw = np.asarray(ob.matrix_world, dtype=np.float64)
-        p_local = np.r_[self.point_local if self.point_local is not None else (0.0, pb.bone.length, 0.0), 1.0]
-        active = self.weights > 0.0
         old = np.empty((len(self.frames), size))
         new = np.empty((len(self.frames), size))
         current, sub = scene.frame_current, scene.frame_subframe
@@ -263,8 +314,8 @@ class ChainEdit:
                         continue
                     pose = np.asarray(pb.matrix, dtype=np.float64)
                     world = mw @ pose
-                    head, point = world[:3, 3], (world @ p_local)[:3]
-                    delta = kin.rotation_between(point - head, self.result.target[j] - head)
+                    head, point = world[:3, 3], (world @ np.r_[local_point[j], 1.0])[:3]
+                    delta = kin.rotation_between(point - head, goals[j] - head)
                     frame = kin.orthonormalize((mw @ pose @ np.linalg.inv(np.asarray(pb.matrix_basis)))[:3, :3])
                     r = kin.local_rotation_update(frame, delta, kin.rotation_to_mat3(old[j], mode))
                     if mode == "QUATERNION":
@@ -276,10 +327,10 @@ class ChainEdit:
                 scene.frame_set(current, subframe=sub)
         cb = action_io.channelbag(ob)
         start = int(self.frames[0])
-        for name, ch, axis in self.aim_channels:
-            fc_old = cb.fcurves.find(pb.path_from_id(ch), index=axis) if cb is not None else None
+        for axis in range(size):
+            fc_old = cb.fcurves.find(pb.path_from_id(channel), index=axis) if cb is not None else None
             model = action_io.read_channel(fc_old) if fc_old is not None else _empty_model()
-            fc, _created = action_io.ensure_channel(ob, pb, ch, axis)
+            fc, _created = action_io.ensure_channel(ob, pb, channel, axis)
             action_io.write_channel(fc, dense.write_dense(model, start, new[:, axis], default=old[0, axis]))
         action_io.tag(ob)
 
