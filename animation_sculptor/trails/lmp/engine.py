@@ -88,6 +88,7 @@ class _State:
         self.last_engine_info = ""
         self.shaded_shader_failed = False
         self.native_failed = set()     # object names where the native solver failed
+        # (ASC-PATCH P8: also (object, bone) keys whose native path was rejected by validation)
         self.tick = 0
         self.deform_cache = {}         # armature name -> [mesh names]
         self.path_clamped = False
@@ -1120,6 +1121,18 @@ def native_bone_paths(arm, bone_names, start, end, point):
             _avs_restore(avs, saved, arm)  # ASC-PATCH P4
 
 
+def _native_points_valid(arm, bone, pts, frame, point):
+    """ASC-PATCH P8: the native path must match the live bone at the current frame (when computed)."""
+    p = pts.get(int(frame))
+    if p is None:
+        return True
+    pb = arm.pose.bones.get(bone)
+    if pb is None:
+        return False
+    live = _bone_point(pb, arm.matrix_world, point)
+    return sum((a - b) ** 2 for a, b in zip(p, live)) < 1e-6
+
+
 # ---------------------------------------------------------------------------
 # Stepping job
 # ---------------------------------------------------------------------------
@@ -1253,7 +1266,7 @@ def _prune_caches(targets):
 def _choose_path_engine(s, ob, t):
     if t.bone:
         if (s.path_engine != 'STEP' and s.path_bone_point != 'CENTER' and ob.mode == 'POSE'
-                and ob.name not in STATE.native_failed):
+                and ob.name not in STATE.native_failed and t.key not in STATE.native_failed):  # ASC-PATCH P8
             pb = ob.pose.bones.get(t.bone) if ob.pose is not None else None
             if pb is not None and pb.motion_path is None:
                 return 'NATIVE'
@@ -1449,6 +1462,16 @@ def update(budget=None, force_full=False):
             if cache is None:
                 continue
             pts = res.get(bone) if res else None
+            if pts and not _native_points_valid(arm, bone, pts, scene.frame_current, s.path_bone_point):
+                # ASC-PATCH P8: the native solver returns silent zeros for bones it cannot see (e.g. in a
+                # hidden bone collection); fall back to frame stepping for this bone only.
+                STATE.native_failed.add((arm_name, bone))
+                pts = None
+                cache.path_engine = 'STEP'
+                for f in frames:
+                    job.add(f, cache.key, True, False)
+                cache.rebuild_path_arrays(display_frames(scene, s))
+                continue
             if pts:
                 cache.pts.update(pts)
                 for f in frames:

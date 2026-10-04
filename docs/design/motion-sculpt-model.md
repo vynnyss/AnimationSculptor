@@ -39,7 +39,7 @@ Entrada: key point no frame `f`, delta de mundo `Δw` (do mouse, no plano da vis
 1. `Δl = R(f)⁻¹ · Δw`, com `R(f)` = parte 3×3 de `P(f)` (`anim/spaces.location_space`, que respeita `use_local_location`, herança e pose do pai; inclui escala do pai).
 2. Eixos travados (`lock_location`) e canais sem F-Curve-editável: componente zerado (o ponto se move só nos eixos livres; a trail prevista mostra isso).
 3. Em cada canal `location[i]`: key em `f` recebe `y += Δlᵢ` e os dois handles `y += Δlᵢ` (translação rígida — preserva a forma local, como no Motion Trail). Se o canal não tem key em `f`, insere-se uma com o valor avaliado (handles `AUTO_CLAMPED` recalculados) antes de aplicar.
-4. **Soft grab** (falloff): os outros key points do mesmo controle a até `r` frames recebem `w(|fₖ−f|/r)·Δw`, cada um convertido pelo seu próprio `R(fₖ)⁻¹`. `r` ajustável com a roda do mouse durante o gesto; `r = 0` ⇒ só o ponto. Curvas de `core/falloff`.
+4. **Soft grab** (falloff): os outros key points do mesmo controle a até `r` frames recebem `w(|fₖ−f|/r)·Δw`, cada um convertido pelo seu próprio `R(fₖ)⁻¹` e aplicado rígido (key + handles) como no passo 3. **Só keys de `location` que já existem se movem; keys vizinhas nunca são criadas** (diferente do ponto agarrado, que ganha key se faltar). `r` ajustável com a roda do mouse ou `[`/`]` durante o gesto; `r = 0` ⇒ só o ponto (grab simples). Curvas de `core/falloff.weight` (`SMOOTH` padrão, `LINEAR`, `SHARP`, `SPHERE`, `CONSTANT`): peso 1 a distância 0, 0 no raio.
 
 ### 2. Arc drag de sampled point (controles de translação)
 
@@ -47,8 +47,8 @@ Entrada: sampled point no frame `f` entre keys `k₀ < f < k₁` (por canal), de
 
 1. `Δv = R(f)⁻¹ · Δw` (desejado por canal).
 2. Por canal: `a = 3(1−t)²t`, `b = 3(1−t)t²`. Solução de norma mínima: `Δyₕ₁ = Δvᵢ·a/(a²+b²)`, `Δyₕ₂ = Δvᵢ·b/(a²+b²)`. Keys e timing **não mudam**; só os valores dos handles internos do segmento.
-3. Tipos de handle: o lado editado vira `ALIGNED` (se era `AUTO*`) e o handle oposto do mesmo key é girado para manter colinearidade preservando seu comprimento — continuidade de tangente no key, como no Motion Trail/Motiontrail3D. Isso altera levemente o segmento vizinho. Modificador "quebrar tangente" ⇒ `FREE`, vizinho intocado.
-4. Segmentos `LINEAR`/`CONSTANT`: operação recusada com aviso no overlay (não convertemos interpolação silenciosamente).
+3. Tipos de handle (como implementado em `core/sculpt_ops.arc_drag`): se o handle editado é `AUTO`/`AUTO_CLAMPED`/`ALIGNED`, **os dois lados do key passam a `ALIGNED`** e o handle oposto é girado para manter a colinearidade **mantendo o seu `x`** — não o comprimento. Preservar `x` honra a invariante 2 (o timing nunca muda); o comprimento do handle oposto pode mudar. Continuidade de tangente no key, como no Motion Trail/Motiontrail3D; isso altera levemente o segmento vizinho. Handles `FREE`/`VECTOR`, ou o modificador "quebrar tangente" (`B`) ⇒ os dois lados `FREE` e os segmentos vizinhos ficam **bit a bit idênticos**.
+4. Recusas: segmentos `LINEAR`/`CONSTANT` ("segmento LINEAR"/"CONSTANT"; não convertemos interpolação silenciosamente), keys e frames fora do intervalo de keys do canal. O solve é exato (norma mínima, coeficientes Bernstein × fator da correção de handles do Blender), inclusive com handles sobrepostos.
 
 É a versão linear, exata, do *Tangent-Space Optimization* restrita a canais de `location` — cobre o caso mais comum (arcos de mão/pé IK, torso) sem otimizador.
 
@@ -90,7 +90,7 @@ Sem reimplementar: **Breakdowner / Push / Relax / Blend to Neighbor** de pose (`
 ## Invariantes (viram testes)
 
 1. Grab com `Δw = 0` não altera nenhum valor.
-2. Arc drag nunca altera `x` de keys/handles nem keys fora do segmento editado (exceto handle oposto em modo alinhado).
+2. Arc drag nunca altera `x` de keys/handles nem keys fora do segmento editado (exceto o `y` do handle oposto, girado em modo alinhado; seu `x` também não muda).
 3. Spacing preserva o conjunto de pontos `{(Bx(t), By(t), Bz(t))}` do segmento (amostrado em `t`) quando os canais compartilham keys.
 4. Retime preserva a ordem das keys em toda F-Curve e não cria keys.
 5. Toda operação é idempotente em relação a cancel: snapshot → op → restore = F-Curves bit a bit iguais.

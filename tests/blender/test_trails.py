@@ -138,6 +138,18 @@ def test_action_update_invalidates_trail(public_rig, provider, engine):
     assert provider.get_trail(public_rig, "hand_ik.L") is None
 
 
+def test_native_points_validated_against_live_bone(public_rig, engine):
+    """ASC-PATCH P8 (found with a UI scenario): pose.paths_calculate returns silent zeros for bones in a
+    hidden collection; such a native path is rejected so the bone falls back to frame stepping."""
+    scene = bpy.context.scene
+    scene.frame_set(5)
+    pb = public_rig.pose.bones["hand_ik.L"]
+    live = tuple(public_rig.matrix_world @ pb.head)
+    assert engine._native_points_valid(public_rig, "hand_ik.L", {5: live}, 5, 'HEAD')
+    assert not engine._native_points_valid(public_rig, "hand_ik.L", {5: (0.0, 0.0, 0.0)}, 5, 'HEAD')
+    assert engine._native_points_valid(public_rig, "hand_ik.L", {9: (0.0, 0.0, 0.0)}, 5, 'HEAD')  # frame not computed
+
+
 def test_trail_on_local_attack_asset(attack_rig, provider):
     """The user's character (local only): trail of the sword hand equals the evaluated rig."""
     scene = bpy.context.scene

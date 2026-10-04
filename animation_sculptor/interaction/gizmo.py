@@ -53,6 +53,9 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
             hit = None
         if hit != state.HOVER:
             state.HOVER = hit
+            refusal = state.REFUSAL
+            if refusal is not None and (hit is None or (hit.bone, hit.frame) != (refusal["bone"], refusal["frame"])):
+                state.REFUSAL = None
             _header(context, hit)
             context.area.tag_redraw()
         return -1 if hit is None else 0
