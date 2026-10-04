@@ -6,7 +6,13 @@ from . import lmp
 
 def register():
     lmp.register()
+    from . import provider
+
+    provider.use_adapter_bone_points(True)
 
 
 def unregister():
+    from . import provider
+
+    provider.use_adapter_bone_points(False)
     lmp.unregister()

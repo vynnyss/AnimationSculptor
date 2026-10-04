@@ -6,7 +6,7 @@ GESTURE = None    # dict describing the running gesture (for the overlay), or No
 MESSAGE = ""      # last refusal / info message shown in the header and overlay
 STATS = {}        # profiling counters (e.g. last_move_ms)
 REFUSAL = None    # {"world", "frame", "bone", "reason"} of the last refused point (drawn in red)
-SETTINGS = {"radius": 0.0, "falloff": "SMOOTH"}   # session defaults of the gesture
+SETTINGS = {"radius": 0.0, "falloff": "SMOOTH", "timing_scope": "CHARACTER", "spacing_policy": "PRESERVE_PATH"}   # session defaults of the gesture
 
 
 def reset():
