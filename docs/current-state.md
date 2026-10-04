@@ -2,11 +2,11 @@
 
 > Leia primeiro. Responde "onde estamos" para qualquer sessão/agente nova. Atualizar ao final de cada sessão significativa.
 
-**Última atualização:** 2026-10-04 — **rig efêmero, fase 4: `Corpo` com pés presos, arrastar o bone direto, validação de rigidez**; versão **0.6.0**; branch `feat/ephemeral-body`, **empilhada sobre o PR #16** (`feat/ephemeral-gesture`, fase 3, em revisão). Falta o M1 do mantenedor (critério 11 do Escopo 1).
+**Última atualização:** 2026-10-04 — #16 e #17 mergeados (rig efêmero completo, 0.6.0). Branch `docs/ux-reform-plan` (só documentação): **plano da reforma de UX** decidido com o mantenedor — [ADR 0013](decisions/0013-body-and-trail-interaction.md) (modos Corpo/Trail, ferramentas na lateral, Rigify escondido), [ADR 0012](decisions/0012-spacing-policy-preserve-path.md) (spacing `PRESERVE_PATH`), [design/sculpt-ux.md](design/sculpt-ux.md).
 
 ## Resumo
 
-Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Também na `main`: a matemática do rig efêmero (fase 2, #15). Em revisão (PR #16, `feat/ephemeral-gesture`): o **gesto efêmero** no viewport (fase 3). Nesta branch (`feat/ephemeral-body`, empilhada sobre o #16): a **fase 4** (`Corpo`, pins, arrastar o bone direto, rigidez). Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
+Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Também na `main`: a matemática do rig efêmero (fase 2, #15). Também na `main`: o **gesto efêmero** no viewport (fase 3, #16) e a **fase 4** (`Corpo`, pins, arrastar o bone direto, rigidez; #17). Nesta branch: o plano da **reforma de UX** (só docs). Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
 
 ## O que funciona hoje
 
@@ -61,7 +61,7 @@ Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com 
 
 - **Gesto efêmero (fase 3, PR #16, 0.5.0)**: LMB num ponto qualquer da trail de um **controle só de rotação** (antes recusado) gira a cadeia de `RigAdapter.ephemeral_chain` — `Membro` (padrão: braço/perna até o bone; Rigify pelo mapa de conceitos, genérico pela hierarquia) ou `Ponta` (só o bone) — para a ponta seguir `ponta(f) + w(f)·Δw` em cada frame da janela da régua (raios passado/futuro, falloff), gravando **keys densas** nos canais de rotação (`core.dense`); nada fora da janela muda. Mão/pé `Mundo` (padrão) ou `Local`. Roda/`[ ]` mudam a janela (reamostra). Recusas: membro em IK (Rigify `IK_FK < 0,5`), `AXIS_ANGLE`, bone da cadeia com constraint, e as de sempre (sem Action, NLA…). 1 passo de undo; Esc bit a bit. Configurações `Scene.asc_sculpt.ephemeral_scope`/`tip_orientation` na barra da ferramenta e no painel Gestos. Detalhes: [ephemeral-rig](design/ephemeral-rig.md#notas-da-implementação-da-fase-3).
 
-- **Fase 4 do rig efêmero (`feat/ephemeral-body`, 0.6.0)**: escopo **`Corpo`** (a coluna gira por mínimos quadrados para a ponta arrastada seguir o mouse; pernas FK presas, pés parados; pernas IK do Rigify já ficam presas pelo rig), **arrastar a ponta do bone direto** (sem mirar na trail; no `Corpo` também `chest`/`hips`/`neck`/`head`), **validação de rigidez** da cadeia no início do gesto (recusa cadeias com bones auxiliares que não seguem rígido — no Rigify: `neck`/`head` por Neck/Head Follow, `hips` com pernas FK) e **clique sem arrasto não escreve nada**. Header `Corpo torso → chest @ 16 … · pés presos: N`, aviso de pé fora de alcance. Detalhes: [ephemeral-rig](design/ephemeral-rig.md#notas-da-implementação-da-fase-4).
+- **Fase 4 do rig efêmero (PR #17, 0.6.0)**: escopo **`Corpo`** (a coluna gira por mínimos quadrados para a ponta arrastada seguir o mouse; pernas FK presas, pés parados; pernas IK do Rigify já ficam presas pelo rig), **arrastar a ponta do bone direto** (sem mirar na trail; no `Corpo` também `chest`/`hips`/`neck`/`head`), **validação de rigidez** da cadeia no início do gesto (recusa cadeias com bones auxiliares que não seguem rígido — no Rigify: `neck`/`head` por Neck/Head Follow, `hips` com pernas FK) e **clique sem arrasto não escreve nada**. Header `Corpo torso → chest @ 16 … · pés presos: N`, aviso de pé fora de alcance. Detalhes: [ephemeral-rig](design/ephemeral-rig.md#notas-da-implementação-da-fase-4).
 
 ## Parcialmente implementado
 
@@ -75,7 +75,7 @@ Nada conhecido.
 
 - O native solver do LMP precisa de janela: em background/CI o engine é `STEP`. As trails seguem os modos de alvo do LMP (bones selecionados em Pose Mode ou fixados/pinned).
 - A tool faz **grab (com soft falloff)** e **arc drag** em controles de translação, e **retime** e **spacing** (Ctrl+LMB) em qualquer controle. A trail prevista ao vivo é avaliada com `core.bezier` (exata para o controle editado); a trail real só é recalculada ao soltar. Raios passado/futuro, falloff, escopo de timing e política de spacing são propriedades de cena com UI no painel "Gestos", na barra da ferramenta (raios/falloff) e na régua de tempo (raios).
-- A política de spacing (`PRESERVE_PATH` × `PRESERVE_SMOOTHNESS`) segue **em aberto**: o padrão é `PRESERVE_PATH` até o mantenedor testar o protótipo (M1); a decisão vira ADR.
+- Política de spacing decidida: `PRESERVE_PATH` como padrão ([ADR 0012](decisions/0012-spacing-policy-preserve-path.md)); `PRESERVE_SMOOTHNESS` continua como parâmetro.
 - O preview do spacing é aproximado quando os canais do segmento não compartilham o `x` dos handles (o resultado final, recalculado ao soltar, é sempre a verdade).
 - `core/` ainda não tem `solve`; não há `pipeline/`. O único adapter de rig além do genérico é o Rigify (metarig Human); o genérico não tem conceitos.
 - Custo medido por mouse move: 0,19 ms só do operador no rig público; o custo de frame completo (reavaliação do Rigify + redesenho) **não** foi medido.
@@ -169,7 +169,7 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 | 8 | Salvar → fechar → reabrir idêntico, sem extras | ✔ automatizado | `test_settings_persistence.py` |
 | 9 | Playback sem piora perceptível; trails ocultas se configurado | parcial | overlay escondido no playback (`hide_on_playback`); trails seguem a configuração do LMP; **desempenho percebido: M1 (passo 19)** |
 | 10 | Sem IA/rede; editável no Graph Editor | ✔ por desenho | nenhum código de rede/IA; o resultado é só a Action; teste de edição no Graph Editor (`scenario_native_edit_refresh.py`, M1 passo 21) |
-| 11 | Checklist M1 completado pelo usuário | **pendente** | mantenedor roda M1 num personagem real e preenche o resultado |
+| 11 | Checklist M1 completado pelo usuário | ✔ por decisão (2026-10-04) | o mantenedor testa animando com a ferramenta antes de aprovar cada PR; esse teste contínuo substitui o M1 formal (será reescrito para a reforma de UX) |
 
 ## Testes
 
@@ -204,7 +204,10 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 
 ## Próximo objetivo
 
-1. **Mantenedor**: revisar/testar o PR #16 (fase 3) e depois o desta branch (fase 4, empilhado); se possível, o critério do Escopo 4 — **swing de espada com braço FK esculpido no viewport**; rodar **M0/M1/M2** (critério 11 do Escopo 1) e **decidir a política de spacing** ⇒ ADR.
-2. Decidir onde entra **"Simplificar"** (reduzir uma região densa a keys esparsas): Escopo 3 ou 4.
-3. Decidir se vale suportar o `Corpo` na coluna do Rigify acima do `chest` (exigiria resolver através dos MCH da coluna, p.ex. Jacobiano numérico pelo depsgraph — caro) ou se `Ponta` em `neck`/`head` basta.
-4. Depois: Escopo 2 (pipeline Godot + Loop parte 1).
+**Reforma de UX** ([design/sculpt-ux.md](design/sculpt-ux.md), [ADR 0013](decisions/0013-body-and-trail-interaction.md)), depois do merge deste plano, em quatro PRs:
+1. **UX-1**: ferramentas Ponta/Membro/Corpo/Smooth na barra lateral, modo Corpo/Trail e toggles no painel N, régua v2.
+2. **UX-2**: agarrar o corpo (raycast na malha, realce, bone deformador → controle, ponto agarrado na superfície, IK por grab/arco/pole) e "Ligar Rigify".
+3. **UX-3**: onion skin (toggle, range da régua) e onion expandido (patch P11).
+4. **UX-4**: Smooth e pescoço/cabeça do Rigify em duas etapas.
+
+Depois: Escopo 2 (pipeline Godot + Loop parte 1). Futuro: "Simplificar", reinstalação automática do zip para os testes do mantenedor.

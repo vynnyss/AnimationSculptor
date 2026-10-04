@@ -78,6 +78,8 @@ Build **0.3.0**. Asset: `tests/assets/local/attack_test.blend` (`python scripts/
 
 Abrir o seu `.blend` Rigify com uma animação já bloqueada (File › Open; **não** salvar ao final, ou usar Save As antes). Repetir os passos 4–6, 7, 10, 13, 14, 16, 18 e 19 com a mão IK do golpe; conferir que o rig aparece como `rigify` no painel e que um controle FK é recusado (passo 12). Descartar com File › Revert.
 
+> **2026-10-04**: o mantenedor testa animando com a ferramenta antes de aprovar cada PR; esse teste contínuo substitui o preenchimento formal do M1 (critério 11 do Escopo 1). Os roteiros de cada PR trazem os passos. O M1 será reescrito para a interface da reforma de UX ([sculpt-ux](../design/sculpt-ux.md)). Reinstalar o zip a cada teste fica para o futuro.
+
 ### Resultado do M1 (preencher)
 
 - **Data:**

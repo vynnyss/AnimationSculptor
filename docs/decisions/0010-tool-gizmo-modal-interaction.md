@@ -1,6 +1,6 @@
 # 0010 — Interação: WorkSpaceTool + Gizmo (hover) + modal (gesto)
 
-- Status: aceito — validado pelo spike em 2026-10-03
+- Status: aceito — validado pelo spike em 2026-10-03; o *que* o picking procura é estendido pelo [ADR 0013](0013-body-and-trail-interaction.md) (malha no modo Corpo)
 - Data: 2026-10-03
 
 ## Contexto e problema

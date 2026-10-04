@@ -1,5 +1,7 @@
 # Interação no viewport (UX)
 
+> **Reforma planejada** (2026-10-04, [ADR 0013](../decisions/0013-body-and-trail-interaction.md)): modos Corpo/Trail, ferramentas Ponta/Membro/Corpo/Smooth na barra lateral, agarrar a malha, régua v2, onion skin normal/expandido, toggle "Ligar Rigify" — [sculpt-ux.md](sculpt-ux.md). Este documento descreve a interação **até a 0.6.0**; será atualizado a cada fase da reforma.
+
 > Animation Sculptor é uma ferramenta visual: UX faz parte do escopo desde a Iteração 1. Objetivo: o animador raramente precisa abrir o Graph Editor (que continua funcionando normalmente sobre as mesmas F-Curves).
 
 ## Entrada na ferramenta

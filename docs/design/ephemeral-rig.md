@@ -132,6 +132,12 @@ Curva-guia com pontos de controle aplicada a um trecho de tempo (faixa roxa na r
 - **Rigidez validada** (`anim/spaces.chain_rigidity`): o solve supõe links rígidos entre bones consecutivos da cadeia (e entre a cadeia e cada perna presa). No início do gesto cada bone da cadeia é girado um pouco (pose ao vivo, frame atual, restaurada exatamente) e todos os links são medidos de novo; link que muda ⇒ recusa "cadeia não rígida: X não segue Y rigidamente". No Rigify gerado: braço FK rígido; `torso → chest` rígido (pernas FK presas ao `torso` também); **`chest → neck` e `neck → head` não** (Neck/Head Follow + distribuição da coluna pelos `MCH-spine.*`) ⇒ `Corpo` em `neck`/`head` é recusado (use `Ponta`); `hips` com pernas FK recusado (o `hips` move as coxas pela coluna MCH, não rigidamente), com pernas IK funciona. Custo: uma reavaliação do depsgraph por bone da cadeia, uma vez por gesto.
 - Verificado: esqueleto estilo Mixamo — cabeça sob o arrasto (< 1 mm), pés parados (< 0,1 mm) e nada fora da janela; Rigify — `chest` inclina o tronco com pés FK presos (< 0,1 mm); na Vale (UI) — ponta do `chest` arrastada direto sob o cursor (0,00 px), pés IK parados, 7 ms por mouse move, 1 Ctrl+Z.
 
+### Depois da fase 4
+
+- O escopo passa a vir da **ferramenta ativa** (Ponta/Membro/Corpo na barra lateral) e o gesto passa a partir da **malha** no modo Corpo, com o ponto agarrado na superfície como ponto arrastado ([sculpt-ux](sculpt-ux.md), [ADR 0013](../decisions/0013-body-and-trail-interaction.md)).
+- Pescoço/cabeça do Rigify na ferramenta Corpo: **inclinar pelo chest e depois apontar a cabeça** (duas etapas; decisão do mantenedor, 2026-10-04).
+- "Simplificar" a região densa: futuro.
+
 ## Testes (viram critérios)
 
 - Unit: FK numpy ⇄ referência analítica; IK de 2 bones (alcance, fora de alcance, plano preservado, determinismo bit a bit em duas execuções); continuidade de quaternion; `weight_signed` (assimetria, 0 nas bordas, 1 em `f₀`); escrita densa (fora da janela inalterado, bordas `ALIGNED`, Δ = 0 ⇒ valores iguais aos atuais em todo frame).
