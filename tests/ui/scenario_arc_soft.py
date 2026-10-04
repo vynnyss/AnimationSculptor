@@ -109,7 +109,7 @@ def scenario(h):
     trail = provider.get_trail(rig, bone)
     moved = [f for f in neighbors if (Vector(trail.point_at(f)) - before[f]).length > 1e-4]
     h.check("neighbour keys followed", len(moved) > 0, moved)
-    state.SETTINGS["radius"] = 0.0
+    bpy.context.scene.asc_sculpt.soft_radius = 0.0
 
     # --- refusal is visible (only the FK control selected, so its trail is the only one) ---------------
     rig.pose.bones[bone].select = False

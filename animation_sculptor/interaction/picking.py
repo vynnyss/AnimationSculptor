@@ -54,12 +54,16 @@ def screen_to_world(region, rv3d, mouse, depth_co) -> Vector:
     return view3d_utils.region_2d_to_location_3d(region, rv3d, Vector(mouse), Vector(depth_co))
 
 
-def hit_test(region, rv3d, mouse, trail_keys, radius=HIT_RADIUS_PX) -> Hit | None:
+def hit_test(region, rv3d, mouse, trail_keys, radius=None) -> Hit | None:
     """Closest trail point to ``mouse`` within ``radius`` px among the given (obj_name, bone) trails.
 
     Key points win over sampled points at equal distance (+2 px bias), so a key is easy to grab even
     with dense trails.
     """
+    if radius is None:
+        from ..ui import prefs
+
+        radius = float(prefs.value("hit_radius_px"))
     best = None
     mx, my = mouse
     for obj_name, bone in trail_keys:
