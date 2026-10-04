@@ -12,6 +12,7 @@ Commands:
   validate             static checks (+ `blender --command extension validate` when Blender is available)
   fetch-blender        (CI, Linux) download the latest Blender 5.2.x into .blender/ and print its path
   assets [--preview]   generate tests/assets/local/attack_test.blend from your Rigify character
+  basic-rig            rig a plain mesh with the simple skeleton (copy next to it + tests/assets/local/basic_rig_test.blend)
                        (optionally render the key poses to tests/assets/local/preview/)
 
 Blender is located from (in order): $BLENDER_EXE, scripts/.dev.toml (`blender = '...'`),
@@ -48,6 +49,7 @@ PYDEPS = TEST_PROFILE / "pydeps"
 DIST = ROOT / "dist"
 LOCAL_ASSETS = ROOT / "tests" / "assets" / "local"
 ATTACK_ASSET = LOCAL_ASSETS / "attack_test.blend"
+BASIC_ASSET = LOCAL_ASSETS / "basic_rig_test.blend"     # simple skeleton (ADR 0014), from make_basic_rig.py
 IS_WINDOWS = os.name == "nt"
 
 
@@ -303,6 +305,33 @@ def cmd_assets(args) -> None:
     sys.exit(_run(cmd))
 
 
+def find_basic_character() -> str | None:
+    for candidate in (os.environ.get("ASC_BASIC_CHARACTER"), _config().get("basic_character")):
+        if candidate and Path(candidate).exists():
+            return str(Path(candidate).resolve())
+    return None
+
+
+def cmd_basic_rig(args) -> None:
+    """Rig the plain mesh with the simple skeleton: a rigged copy next to it (never the source itself) and
+    the test asset tests/assets/local/basic_rig_test.blend (with a small Action)."""
+    blender = find_blender()
+    check_blender_version(blender)
+    source = args.source or find_basic_character()
+    if not source:
+        sys.exit("[dev] plain mesh not found. Pass --source or add to scripts/.dev.toml:\n"
+                 "      basic_character = 'D:\\path\\to\\mesh.blend'")
+    src = Path(source).resolve()
+    output = Path(args.output).resolve() if args.output else src.with_name(
+        src.stem.replace("_mesh", "") + "_rigged.blend")
+    if output == src or BASIC_ASSET.resolve() == src:
+        sys.exit("[dev] the source and the generated files must be different files")
+    LOCAL_ASSETS.mkdir(parents=True, exist_ok=True)
+    sys.exit(_run([blender, "--background", str(src), "--factory-startup", "--python-exit-code", "1",
+                   "--python", str(ROOT / "scripts" / "make_basic_rig.py"), "--",
+                   "--output", str(output), "--test-output", str(BASIC_ASSET)]))
+
+
 def cmd_fetch_blender(_args) -> None:
     if IS_WINDOWS:
         sys.exit("[dev] fetch-blender is for Linux CI")
@@ -341,6 +370,10 @@ def main() -> None:
     sub.add_parser("build").set_defaults(func=cmd_build)
     sub.add_parser("validate").set_defaults(func=cmd_validate)
     sub.add_parser("fetch-blender").set_defaults(func=cmd_fetch_blender)
+    p_basic = sub.add_parser("basic-rig")
+    p_basic.add_argument("--source", default=None, help="plain mesh .blend (default: basic_character)")
+    p_basic.add_argument("--output", default=None, help="rigged copy (default: <source>_rigged.blend)")
+    p_basic.set_defaults(func=cmd_basic_rig)
     p_assets = sub.add_parser("assets")
     p_assets.add_argument("--preview", action="store_true", help="also render the key poses to PNG")
     p_assets.set_defaults(func=cmd_assets)
