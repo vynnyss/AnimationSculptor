@@ -174,3 +174,21 @@ def test_onion_frame_stepping_keeps_the_unkeyed_pose(public_rig, addon):
     pb.location = (0.2, -0.1, 0.3)                        # not keyed
     provider.update_now()
     assert tuple(round(v, 6) for v in pb.location) == (0.2, -0.1, 0.3)
+
+
+def test_spread_spacing_is_one_per_character_for_separate_meshes(provider, body_rig):
+    """Head, torso and legs as separate meshes on one skeleton: one spacing, so the expanded ghosts of the
+    parts stay together (bug seen on the Vale: head off the torso, torso off the legs)."""
+    body = bpy.data.objects["asc_test_body"]
+    parts = []
+    for i in range(2):                          # two more meshes deformed by the same rig, smaller than the body
+        ob = body.copy()
+        ob.data = body.data.copy()
+        ob.scale = (0.3 + 0.2 * i,) * 3
+        bpy.context.scene.collection.objects.link(ob)
+        parts.append(ob)
+    provider.set_onion_spread(True)
+    spacings = {provider.spread_spacing(o.name) for o in [body] + parts}
+    assert len(spacings) == 1
+    assert provider.character_of(parts[0].name) == body_rig.name
+    provider.set_onion_spread(False)

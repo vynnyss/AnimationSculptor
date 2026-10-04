@@ -225,30 +225,58 @@ class _Spread:
     auto = {}           # obj_name -> spacing measured when the spread was enabled
 
 
-def _character_width(obj_name: str) -> float:
-    """Max of the world bounding-box X/Y extent of the object and its mesh children (rest bounds)."""
+def character_of(obj_name: str) -> str:
+    """The character an onion target belongs to: the armature deforming (Armature modifier) or parenting
+    the object, else the object itself. All the meshes of one character share one ghost spacing."""
     import bpy
-    from mathutils import Vector
 
     ob = bpy.data.objects.get(obj_name)
     if ob is None:
-        return 1.0
-    meshes = [c for c in ob.children_recursive if c.type == 'MESH']
+        return obj_name
+    if ob.type == 'ARMATURE':
+        return ob.name
+    for mod in getattr(ob, "modifiers", ()):
+        if mod.type == 'ARMATURE' and mod.object is not None:
+            return mod.object.name
+    if ob.parent is not None and ob.parent.type == 'ARMATURE':
+        return ob.parent.name
+    return ob.name
+
+
+def _character_meshes(key: str):
+    import bpy
+
+    ob = bpy.data.objects.get(key)
+    if ob is None:
+        return []
+    if ob.type != 'ARMATURE':
+        return [ob]
+    return [o for o in bpy.data.objects if o.type == 'MESH' and character_of(o.name) == key and o.visible_get()]
+
+
+def _character_width(key: str) -> float:
+    """Max of the world bounding-box X/Y extent of all the character's meshes (rest bounds; the rig's
+    control shapes are wider than the character, so they are left out)."""
+    from mathutils import Vector
+
     pts = []
-    for o in (meshes or [ob]):      # the body, not the rig widgets (control shapes are wider than the character)
+    for o in _character_meshes(key):
         pts.extend(o.matrix_world @ Vector(c) for c in o.bound_box)
+    if not pts:
+        return 1.0
     ext = max(max(p.x for p in pts) - min(p.x for p in pts), max(p.y for p in pts) - min(p.y for p in pts))
     return ext if ext > 1e-6 else 1.0
 
 
 def spread_spacing(obj_name: str) -> float:
     """World distance between consecutive ghosts: the explicit spacing, else 1.1 × the character width
-    (measured once per enable, so scrubbing does not make the ghosts breathe)."""
+    (one value per character — separate meshes of one body stay together — measured once per enable)."""
     if _Spread.spacing is not None:
         return float(_Spread.spacing)
-    sp = _Spread.auto.get(obj_name)
+    key = character_of(obj_name)
+    sp = _Spread.auto.get(key)
     if sp is None:
-        sp = _Spread.auto[obj_name] = _character_width(obj_name) * 1.1
+        sp = _Spread.auto[key] = _character_width(key) * 1.1
     return sp
 
 
