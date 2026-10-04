@@ -431,9 +431,10 @@ def _current_point(t):
             if pb is None:
                 return None
             s = bpy.context.scene.asc_trails
-            if s.path_bone_point == 'TAIL':
+            point = engine.bone_point(ob, t.bone, s)  # ASC-PATCH P9
+            if point == 'TAIL':
                 return ob.matrix_world @ pb.tail
-            if s.path_bone_point == 'CENTER':
+            if point == 'CENTER':
                 return ob.matrix_world @ ((pb.head + pb.tail) * 0.5)
             return ob.matrix_world @ pb.head
         return ob.matrix_world.translation.copy()

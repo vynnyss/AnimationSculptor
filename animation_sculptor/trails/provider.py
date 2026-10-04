@@ -125,6 +125,21 @@ def suspended(keys=None):
         resume(keys)
 
 
+def _adapter_bone_point(ob, bone):
+    """Trail point of a control from its rig adapter: TAIL for rotation-only (FK) controls, HEAD for
+    translation controls; None (global setting) for anything that is not a control."""
+    if ob.type != 'ARMATURE':
+        return None
+    from .. import rig
+
+    info = rig.get_adapter(ob).classify(ob, bone)
+    return None if info is None else info.reference
+
+
+def use_adapter_bone_points(enabled: bool = True) -> None:
+    engine.BONE_POINT_RESOLVER = _adapter_bone_point if enabled else None
+
+
 def stats() -> dict:
     st = engine.STATE
     return {

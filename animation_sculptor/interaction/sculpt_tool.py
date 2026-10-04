@@ -19,14 +19,16 @@ import numpy as np
 from .. import rig
 from ..anim import action_io, spaces
 from ..anim.snapshot import Snapshot
-from ..core import bezier, falloff, sculpt_ops
+from ..core import bezier, falloff, sculpt_ops, timing_ops
 from ..trails import provider
-from . import gizmo, picking, state
+from . import gizmo, picking, state, timing_edit
 
 TOOL_ID = "animation_sculptor.sculpt"
 PRECISION = 0.1
+SPACING_PX = 250.0       # mouse pixels for a full favor/ease change of 1.0
 RADIUS_KEYS = {'WHEELUPMOUSE', 'WHEELDOWNMOUSE', 'LEFT_BRACKET', 'RIGHT_BRACKET'}
-PASSIVE_KEYS = {'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFTMOUSE', 'MIDDLEMOUSE', 'B'} | RADIUS_KEYS
+PASSIVE_KEYS = {'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFT_CTRL', 'RIGHT_CTRL', 'LEFT_ALT', 'RIGHT_ALT',
+                'OSKEY', 'LEFTMOUSE', 'MIDDLEMOUSE', 'B'} | RADIUS_KEYS
 
 
 class _EditBase:
@@ -213,9 +215,42 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     frame: IntProperty(options={'SKIP_SAVE'})
     delta: FloatVectorProperty(size=3, subtype='TRANSLATION', unit='LENGTH', options={'SKIP_SAVE'})
     mode: EnumProperty(items=(('AUTO', "Auto", "Grab on key points, arc drag on in-betweens"),
-                              ('GRAB', "Grab", ""), ('ARC', "Arc", "")), default='AUTO', options={'SKIP_SAVE'})
+                              ('GRAB', "Grab", ""), ('ARC', "Arc", ""),
+                              ('RETIME', "Retime", "Move the pose key at frame to new_frame"),
+                              ('SPACING', "Spacing", "Ease/favor of the segment around frame")),
+                       default='AUTO', options={'SKIP_SAVE'})
     radius: FloatProperty(name="Raio (frames)", min=0.0, max=500.0, default=0.0, options={'SKIP_SAVE'})
     break_tangent: BoolProperty(name="Quebrar tangente", default=False, options={'SKIP_SAVE'})
+    new_frame: FloatProperty(options={'SKIP_SAVE'})
+    favor: FloatProperty(options={'SKIP_SAVE'})
+    ease: FloatProperty(options={'SKIP_SAVE'})
+    scope: EnumProperty(items=(('CHARACTER', "Personagem", "Todas as F-Curves do rig"),
+                               ('SELECTED', "Selecionados", "Só os bones selecionados")),
+                        default='CHARACTER', options={'SKIP_SAVE'})
+    policy: EnumProperty(items=(('PRESERVE_PATH', "Preservar caminho", ""),
+                                ('PRESERVE_SMOOTHNESS', "Preservar suavidade", "")),
+                         default='PRESERVE_PATH', options={'SKIP_SAVE'})
+
+    def _begin_timing(self, context, obj_name, bone, frame, mode, scope, policy):
+        ob = bpy.data.objects.get(obj_name)
+        pb = ob.pose.bones.get(bone) if ob is not None and ob.pose is not None else None
+        if pb is None:
+            return "controle não encontrado"
+        if rig.get_adapter(ob).classify(ob, bone) is None:
+            return "não é um controle do rig (MCH/ORG/DEF)"
+        reason = timing_edit.refusal(ob)
+        if reason:
+            return reason
+        if mode == 'RETIME':
+            self.edit = timing_edit.RetimeEdit(ob, pb, frame, scope)
+            if not self.edit.editable:
+                return "nenhuma key nesse frame"
+        else:
+            self.edit = timing_edit.SpacingEdit(ob, pb, frame, scope, policy)
+            if not self.edit.editable:
+                return self.edit.reason
+        self.obj_name, self.bone, self.frame = obj_name, bone, frame
+        return ""
 
     def _begin(self, context, obj_name, bone, frame, mode, radius=0.0):
         ob = bpy.data.objects.get(obj_name)
@@ -246,6 +281,18 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         return ""
 
     def execute(self, context):
+        if self.mode in {'RETIME', 'SPACING'}:
+            reason = self._begin_timing(context, self.obj_name, self.bone, self.frame, self.mode, self.scope,
+                                        self.policy)
+            if reason:
+                self.report({'WARNING'}, f"Animation Sculptor: {reason}")
+                return {'CANCELLED'}
+            with provider.suspended(keys=None):
+                if self.mode == 'RETIME':
+                    self.edit.apply(self.new_frame)
+                else:
+                    self.edit.apply(self.favor, self.ease)
+            return {'FINISHED'}
         reason = self._begin(context, self.obj_name, self.bone, self.frame, self.mode, self.radius)
         if reason:
             self.report({'WARNING'}, f"Animation Sculptor: {reason}")
@@ -263,7 +310,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if hit is None or context.region_data is None:
             return {'PASS_THROUGH'}
         if event.ctrl:
-            return self._refuse(context, hit, "tempo (retime/spacing): próximo passo")
+            return self._invoke_timing(context, event, hit)
         mode = 'GRAB' if hit.is_key else 'ARC'
         reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, state.SETTINGS["radius"])
         if reason:
@@ -286,6 +333,64 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         self._header(context)
         return {'RUNNING_MODAL'}
 
+    def _invoke_timing(self, context, event, hit):
+        mode = 'RETIME' if hit.is_key else 'SPACING'
+        reason = self._begin_timing(context, hit.obj_name, hit.bone, hit.frame, mode,
+                                    state.SETTINGS["timing_scope"], state.SETTINGS["spacing_policy"])
+        if reason:
+            return self._refuse(context, hit, reason)
+        self.origin = Vector(hit.world)
+        self.mouse0 = Vector((event.mouse_region_x, event.mouse_region_y))
+        self.last_mouse = self.mouse0.copy()
+        self.mdelta = Vector((0.0, 0.0))
+        self.accum = Vector((0.0, 0.0, 0.0))
+        self.trail = provider.get_trail_by_key((hit.obj_name, hit.bone))
+        self.dir, self.ppf = Vector((1.0, 0.0)), 0.0
+        if mode == 'RETIME' and self.trail is not None:
+            before = self.trail.point_at(hit.frame - 1)
+            after = self.trail.point_at(hit.frame + 1)
+            a = picking.world_to_screen(context.region, context.region_data, before if before is not None else hit.world)
+            b = picking.world_to_screen(context.region, context.region_data, after if after is not None else hit.world)
+            if a is not None and b is not None:
+                span = 2.0 if before is not None and after is not None else 1.0
+                self.dir = b - a
+                self.ppf = self.dir.length / span
+        provider.suspend()
+        state.HOVER = None
+        state.REFUSAL = None
+        state.GESTURE = {"kind": self.edit.kind, "world": tuple(self.origin), "bone": hit.bone,
+                         "frame": hit.frame, "preview": None, "falloff": [], "label": ""}
+        context.window_manager.modal_handler_add(self)
+        self._header(context)
+        return {'RUNNING_MODAL'}
+
+    def _move_timing(self, context, event):
+        mouse = Vector((event.mouse_region_x, event.mouse_region_y))
+        self.mdelta += (mouse - self.last_mouse) * (PRECISION if event.shift else 1.0)
+        self.last_mouse = mouse
+        if self.edit.kind == "RETIME":
+            frames = timing_ops.retime_frames_from_screen(self.mdelta, self.dir, self.ppf)
+            target = self.frame + frames
+            if not event.shift:
+                target = round(target)
+            applied = self.edit.apply(target)
+            frame_int = int(round(applied))
+            if context.scene.frame_current != frame_int:
+                context.scene.frame_set(frame_int)
+            state.GESTURE["label"] = f"{self.frame} → {applied:g}"
+        else:
+            favor = self.mdelta.x / SPACING_PX
+            ease = self.mdelta.y / SPACING_PX
+            self.edit.apply(favor, ease)
+            if self.trail is not None:
+                pts = self.edit.preview(self.trail.frames, self.trail.points)
+                state.GESTURE["preview"] = None if pts is None else [tuple(p) for p in pts]
+                state.GESTURE["speed"] = True
+            lo, li = self.edit.current
+            state.GESTURE["label"] = f"saída {lo:.0%} · chegada {li:.0%}"
+        self._header(context)
+        context.area.tag_redraw()
+
     def _refuse(self, context, hit, reason):
         state.MESSAGE = reason
         state.REFUSAL = {"world": hit.world, "frame": hit.frame, "bone": hit.bone, "reason": reason}
@@ -301,6 +406,22 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         state.GESTURE["falloff"] = [(self.edit.world_at(f), w) for f, w in self.edit.weights()]
 
     def _header(self, context):
+        hint = "   Shift: precisão · Esc/RMB: cancelar · soltar: confirmar"
+        if self.edit.kind == "RETIME":
+            e = self.edit
+            limits = f"entre {e.low:g} e {e.high:g}" if e.high != float("inf") and e.low != float("-inf") else ""
+            context.area.header_text_set(
+                f"Retime da pose {self.frame} → {e.target:g}   {len(e.keyed)} canal(is) · {e.scope.lower()} "
+                f"{limits}   (arraste ao longo da trail; Shift: sub-frame)" + hint)
+            return
+        if self.edit.kind == "SPACING":
+            e = self.edit
+            lo, li = e.current
+            policy = "preservar caminho" if e.policy == timing_ops.PRESERVE_PATH else "preservar suavidade"
+            context.area.header_text_set(
+                f"Spacing {e.k0:g}→{e.k1:g}   saída {lo:.0%} · chegada {li:.0%}   {len(e.channels)} canal(is) · "
+                f"{policy}   (horizontal: favorecer · vertical: ease)" + hint)
+            return
         d = self.accum
         delta = f"Δ ({d.x:+.3f}, {d.y:+.3f}, {d.z:+.3f}) m"
         if self.edit.kind == "GRAB":
@@ -324,6 +445,11 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         context.area.tag_redraw()
 
     def modal(self, context, event):
+        if event.type == 'MOUSEMOVE' and self.edit.kind in {"RETIME", "SPACING"}:
+            t0 = time.perf_counter()
+            self._move_timing(context, event)
+            state.STATS["last_move_ms"] = (time.perf_counter() - t0) * 1000.0
+            return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE':
             t0 = time.perf_counter()
             region, rv3d = context.region, context.region_data
@@ -352,6 +478,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             return {'FINISHED'}
         if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
             self.edit.restore()
+            if self.edit.kind == "RETIME" and context.scene.frame_current != self.frame:
+                context.scene.frame_set(self.frame)
             self._end(context, cancel=True)
             return {'CANCELLED'}
         if event.value == 'PRESS' and event.type not in PASSIVE_KEYS:
@@ -365,8 +493,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         state.GESTURE = None
         context.area.header_text_set(None)
         context.area.tag_redraw()
-        # cancel restored the F-Curves bit for bit: the cached trail is still the truth
-        provider.resume(keys=[] if cancel else [(self.obj_name, self.bone)])
+        # cancel restored the F-Curves bit for bit: the cached trail is still the truth. Timing gestures
+        # change every channel of the scope, so every trail is recomputed.
+        timing = self.edit.kind in {"RETIME", "SPACING"}
+        provider.resume(keys=[] if cancel else (None if timing else [(self.obj_name, self.bone)]))
         if not cancel:
             # recompute the edited trail now instead of waiting for the engine's timer
             t0 = time.perf_counter()

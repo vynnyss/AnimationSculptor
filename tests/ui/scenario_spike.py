@@ -156,8 +156,8 @@ def scenario(h):
     state.MESSAGE = ""
     h.event('LEFTMOUSE', 'PRESS', win_co, ctrl=True)
     yield 0.2
+    started = state.GESTURE is not None and state.GESTURE["kind"] == "RETIME"
     h.event('LEFTMOUSE', 'RELEASE', win_co, ctrl=True)
     yield 0.3
     h.check("Ctrl+LMB does not grab", _location_keys(rig) == keys_before and state.GESTURE is None)
-    h.check("Ctrl+LMB on a trail point reaches the gesture operator (time gesture)", "tempo" in state.MESSAGE,
-            repr(state.MESSAGE))
+    h.check("Ctrl+LMB on a key point starts the time gesture (retime)", started)

@@ -102,6 +102,23 @@ class _State:
 STATE = _State()
 CACHE = {}          # (obj_name, bone_name) -> TargetCache
 
+# ASC-PATCH P9: per-target bone point. Animation Sculptor follows the TAIL of FK controls and the HEAD of
+# translation controls (from its rig adapter); None falls back to the global "Bone Point" setting.
+BONE_POINT_RESOLVER = None   # callable(object, bone_name) -> 'HEAD' | 'TAIL' | 'CENTER' | None
+
+
+def bone_point(ob, bone, s):
+    """Point of ``bone`` followed by its trail (ASC-PATCH P9)."""
+    resolver = BONE_POINT_RESOLVER
+    if resolver is not None and ob is not None and bone:
+        try:
+            point = resolver(ob, bone)
+        except Exception:
+            point = None
+        if point:
+            return point
+    return s.path_bone_point
+
 
 # ---------------------------------------------------------------------------
 # Data containers
@@ -1184,7 +1201,6 @@ def run_step_job(job, scene, s, budget):
     t0 = time.perf_counter()
     use_mod = s.onion_use_modifiers
     limit = s.onion_vertex_limit
-    point = s.path_bone_point
     job.sort(orig_frame)
     try:
         for f in job.order:
@@ -1210,6 +1226,7 @@ def run_step_job(job, scene, s, budget):
                     if cache.is_bone:
                         pb = ob_eval.pose.bones.get(cache.bone) if ob_eval.pose is not None else None
                         if pb is not None:
+                            point = bone_point(ob, cache.bone, s)  # ASC-PATCH P9
                             cache.pts[f] = _bone_point(pb, ob_eval.matrix_world, point)
                     else:
                         cache.mats[f] = np.array(ob_eval.matrix_world, dtype=np.float64)
@@ -1265,7 +1282,7 @@ def _prune_caches(targets):
 
 def _choose_path_engine(s, ob, t):
     if t.bone:
-        if (s.path_engine != 'STEP' and s.path_bone_point != 'CENTER' and ob.mode == 'POSE'
+        if (s.path_engine != 'STEP' and bone_point(ob, t.bone, s) != 'CENTER' and ob.mode == 'POSE'
                 and ob.name not in STATE.native_failed and t.key not in STATE.native_failed):  # ASC-PATCH P8
             pb = ob.pose.bones.get(t.bone) if ob.pose is not None else None
             if pb is not None and pb.motion_path is None:
@@ -1387,7 +1404,8 @@ def update(budget=None, force_full=False):
                     if modal and not force_full:
                         retry = True
                     elif t.bone:
-                        native_bone_requests.setdefault(ob.name, {})[t.bone] = missing
+                        # ASC-PATCH P9: one native solve per (armature, bone point)
+                        native_bone_requests.setdefault((ob.name, bone_point(ob, t.bone, s)), {})[t.bone] = missing
                     else:
                         # +1: the solver's end frame is exclusive in some versions
                         pts = native_object_path(ob, min(missing), max(missing) + 1)
@@ -1450,19 +1468,19 @@ def update(budget=None, force_full=False):
     STATE.dirty_onion = False
 
     # --------------------------------------------------- native bone paths
-    for arm_name, bones in native_bone_requests.items():
+    for (arm_name, point), bones in native_bone_requests.items():
         arm = bpy.data.objects.get(arm_name)
         if arm is None:
             continue
         lo = min(min(fr) for fr in bones.values())
         hi = max(max(fr) for fr in bones.values())
-        res = native_bone_paths(arm, list(bones.keys()), lo, hi + 1, s.path_bone_point)
+        res = native_bone_paths(arm, list(bones.keys()), lo, hi + 1, point)
         for bone, frames in bones.items():
             cache = CACHE.get((arm_name, bone))
             if cache is None:
                 continue
             pts = res.get(bone) if res else None
-            if pts and not _native_points_valid(arm, bone, pts, scene.frame_current, s.path_bone_point):
+            if pts and not _native_points_valid(arm, bone, pts, scene.frame_current, point):
                 # ASC-PATCH P8: the native solver returns silent zeros for bones it cannot see (e.g. in a
                 # hidden bone collection); fall back to frame stepping for this bone only.
                 STATE.native_failed.add((arm_name, bone))

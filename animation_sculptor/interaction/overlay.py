@@ -3,6 +3,7 @@
 
 import math
 
+import blf
 import bpy
 import gpu
 import numpy as np
@@ -18,6 +19,8 @@ COLOR_SAMPLED = (0.55, 0.85, 1.0, 1.0)
 COLOR_ACTIVE = (1.0, 0.75, 0.2, 1.0)
 COLOR_REFUSED = (1.0, 0.25, 0.2, 1.0)
 COLOR_PREVIEW = (1.0, 0.85, 0.3, 1.0)
+SPEED_SLOW = np.array((0.1, 0.4, 1.0))
+SPEED_FAST = np.array((1.0, 0.15, 0.1))
 
 
 def _ring(cx, cy, radius, segments=24):
@@ -37,6 +40,35 @@ def _draw_polyline(shader, pts, color, width):
     shader.uniform_float("lineWidth", width)
     shader.uniform_float("viewportSize", gpu.state.viewport_get()[2:])
     batch.draw(shader)
+
+
+def _speed_colors(world_pts):
+    """Blue (slow) → red (fast) per point, from the distance travelled per frame (like the LMP Speed mode)."""
+    p = np.asarray(world_pts, dtype=np.float64)
+    if len(p) < 2:
+        return np.tile(np.r_[SPEED_SLOW, 1.0], (len(p), 1))
+    speed = np.linalg.norm(np.diff(p, axis=0), axis=1)
+    speed = np.r_[speed[:1], speed]
+    top = float(np.percentile(speed, 95)) if len(speed) > 4 else float(speed.max())
+    t = np.clip(speed / (top if top > 1e-9 else 1.0), 0.0, 1.0)[:, None]
+    rgb = SPEED_SLOW[None] + (SPEED_FAST - SPEED_SLOW)[None] * t
+    return np.c_[rgb, np.ones(len(p))]
+
+
+def _draw_dots(points_2d, colors, size):
+    shader = gpu.shader.from_builtin('POINT_FLAT_COLOR')
+    pos = [(x, y, 0.0) for x, y in points_2d]
+    batch = batch_for_shader(shader, 'POINTS', {"pos": pos, "color": [tuple(c) for c in colors]})
+    gpu.state.point_size_set(size)
+    shader.bind()
+    batch.draw(shader)
+
+
+def _draw_label(co, text, px):
+    blf.size(0, int(13 * px))
+    blf.color(0, 1.0, 1.0, 1.0, 1.0)
+    blf.position(0, co[0] + 14 * px, co[1] + 10 * px, 0.0)
+    blf.draw(0, text)
 
 
 def _draw_ring(shader, co, radius, color, width):
@@ -63,9 +95,15 @@ def draw_pixel():
         if gesture is not None:
             preview = gesture.get("preview")
             if preview:
-                scr = picking.project_points(region, rv3d, np.asarray(preview, dtype=np.float64))
-                pts = [(float(x), float(y)) for x, y in scr if x == x]  # drop points behind the view
-                _draw_polyline(shader, pts, COLOR_PREVIEW, 2.5 * px)
+                world = np.asarray(preview, dtype=np.float64)
+                scr = picking.project_points(region, rv3d, world)
+                ok = ~np.isnan(scr[:, 0])                                  # drop points behind the view
+                pts = [(float(x), float(y)) for x, y in scr[ok]]
+                if gesture.get("speed"):
+                    _draw_dots(pts, _speed_colors(world)[ok], 6.0 * px)    # spacing: dots coloured by speed
+                    shader.bind()
+                else:
+                    _draw_polyline(shader, pts, COLOR_PREVIEW, 2.5 * px)
             for world, w in gesture.get("falloff") or ():
                 if world is None:
                     continue
@@ -77,6 +115,8 @@ def draw_pixel():
             if co is not None:
                 color = COLOR_REFUSED if gesture.get("refused") else COLOR_ACTIVE
                 _draw_ring(shader, co, 10.0 * px, color, 2.5 * px)
+                if gesture.get("label"):
+                    _draw_label(co, gesture["label"], px)
         else:
             if refusal is not None:
                 co = picking.world_to_screen(region, rv3d, refusal["world"])

@@ -7,7 +7,7 @@
 | Conceito | Definição |
 |---|---|
 | **Controle** | Pose bone que o animador keya (no Rigify: bones sem prefixo `ORG-`/`MCH-`/`DEF-`). Tem *capacidades*: `TRANSLATION` (tem canais `location` não travados), `ROTATION` (canais de rotação). |
-| **Ponto de referência** | Onde a trail é medida: `head` para controles de translação; `tail` para bones FK (a ponta da mão, não a junta). Configurável. |
+| **Ponto de referência** | Onde a trail é medida: `head` para controles de translação; `tail` para bones FK (a ponta da mão, não a junta). **Implementado** (patch P9 do LMP): vem do adapter do rig por alvo (`ControlInfo.reference`); fora dos controles vale a configuração global "Bone Point" do LMP. |
 | **Trail** | Sequência de pontos em espaço de mundo do ponto de referência de um controle, um por frame amostrado. Fornecida pelo engine do LMP; durante um gesto, prevista analiticamente. |
 | **Key point** | Ponto da trail num frame onde o controle tem key em algum canal relevante. Desenhado diferente dos amostrados. |
 | **Sampled point** | Ponto da trail num frame sem key (in-between). |
@@ -54,20 +54,27 @@ Entrada: sampled point no frame `f` entre keys `k₀ < f < k₁` (por canal), de
 
 ### 3. Retime de pose key (qualquer controle, escopo de timing)
 
-Arrastar um key point com o modificador de tempo move a **pose key** `f → f'`:
+**Implementado** (`core/timing_ops.retime`, `interaction/timing_edit.RetimeEdit`). Arrastar um key point com Ctrl move a **pose key** `f → f'`:
 
-- `f'` inteiro por padrão (sub-frame com modificador), limitado a `(f_prev+1, f_next−1)` entre pose keys vizinhas.
-- Em toda F-Curve do escopo: keys em `|x−f| < ε` recebem `x += Δ`, handles `x += Δ`. Keys fora de `f` não se movem (overlap/offset existentes são preservados).
-- Mapeamento tela→tempo: projeção do movimento do mouse na direção da trail no ponto (mover "para frente na trail" = mais tarde), algoritmo do modo *timing* do Motion Trail.
-- Funciona para FK, IK, qualquer canal — é só tempo.
+- `f'` inteiro por padrão (sub-frame com Shift), limitado a ≥ 1 frame das pose keys vizinhas: `(f_prev+1, f_next−1)`. Se o intervalo é estreito demais para caber, a key não se move.
+- Pose keys = frames onde algum canal do escopo tem key (`pose_keys`, uniões com tolerância 1e-3).
+- Em toda F-Curve do escopo: a key em `|x−f| < ε` recebe `x += Δ` e seus handles `x += Δ` (os valores `y` não mudam). Keys fora de `f` não se movem (overlap/offset existentes são preservados). **Nunca cria nem remove keys; a ordem das keys se mantém** (invariante 4).
+- Mapeamento tela→tempo (`retime_frames_from_screen`): projeção do movimento do mouse na direção da trail em tela no ponto (mover "para frente na trail" = mais tarde) dividida pelos pixels por frame da trail ali (modo *timing* do Motion Trail); sem direção útil (trail parada), o movimento horizontal vale 20 px por frame. Frames inteiros, exceto com Shift.
+- Funciona para FK, IK, qualquer canal — é só tempo. Escopo de timing `CHARACTER` (todas as F-Curves do slot do rig sem modificador ativo; padrão) ou `SELECTED` (bones selecionados + o arrastado).
+- Verificado: no rig Rigify gerado, depois de mover a pose de 12 para 15 a pose avaliada no frame 15 é igual à pose antiga do frame 12 em mão, pé e torso, e só as keys foram deslocadas.
 
 ### 4. Spacing de segmento (escopo de timing)
 
-Entre duas pose keys `k₀, k₁` (duração `D`): definir os comprimentos temporais dos handles `λ_out·D` (saindo de `k₀`) e `λ_in·D` (chegando em `k₁`), com `λ_out + λ_in ≤ 1` (evita a correção automática de handles sobrepostos do Blender).
+**Implementado** (`core/timing_ops.set_spacing`, `interaction/timing_edit.SpacingEdit`). Entre duas keys `k₀, k₁` do controle arrastado (duração `D`): definir os comprimentos temporais dos handles `λ_out·D` (saindo de `k₀`) e `λ_in·D` (chegando em `k₁`), com `MIN_LAMBDA = 0,02` e `λ_out + λ_in ≤ 0,98` (`clamp_lambdas`; o piso é mantido depois da escala). Com a soma < 1 a correção de handles sobrepostos do Blender nunca entra em ação, então o resultado é exato.
 
-- Mudando **só o x** dos handles e aplicando os **mesmos x em todos os canais** do segmento, os valores de controle (y) não mudam ⇒ o **caminho espacial é preservado exatamente**; só o spacing (`t(f)`) muda. Ease-out forte = `λ_out` grande.
-- Gesto: arrasto horizontal sobre o segmento = *favor* (transfere entre `λ_out` e `λ_in`); vertical = *ease* (soma). Feedback: pontos amostrados se redistribuem ao vivo + cor de velocidade do LMP.
-- Efeito colateral a decidir no protótipo: mudar só x altera a inclinação da tangente no key; com `ALIGNED` o handle oposto teria que girar (mudando o segmento vizinho). Duas políticas: `PRESERVE_PATH` (handles `FREE` só quando a colinearidade quebra; direção espacial contínua, velocidade pode ter salto) e `PRESERVE_SMOOTHNESS` (mantém `ALIGNED`, ajusta o vizinho). Em poses com ease (inclinação ≈ 0) as duas coincidem. Decisão registrada em ADR após teste com o usuário — ver [agenda](../agenda.md).
+- Mudando **só o x** dos handles e aplicando os **mesmos x em todos os canais** do segmento, os valores de controle (y) não mudam ⇒ o **caminho espacial é preservado exatamente**; só o spacing (`t(f)`) muda. Ease-out forte = `λ_out` grande. O spacing se aplica a todo canal do escopo que tem exatamente o segmento `[k₀, k₁]` do controle arrastado; recusa segmento `LINEAR`/`CONSTANT` e arrastos fora do intervalo de keys.
+- **Achado (2026-10-04)**: o caminho **em mundo** só é preservado exatamente quando os canais **compartilham o `x` dos handles** do segmento. Os handles `AUTO`/`AUTO_CLAMPED` do Blender têm `x` que depende apenas dos frames das keys (o cálculo de handles da F-Curve usa distâncias em `x`), então canais keyados nos mesmos frames os compartilham; e depois de uma edição de spacing todos os canais do segmento têm o mesmo `λ`, qualquer que fosse o ponto de partida. Verificado no rig Rigify gerado (`test_spacing_keeps_the_world_path`, amostragem densa em sub-frames: < 0,2 mm, três variantes de gesto). Se um canal tivesse `x` diferente, o caminho em mundo mudaria um pouco (o preview, que reamostra o caminho antigo, seria só aproximado).
+- Um ease **simétrico** (`λ_out = λ_in`) deixa o frame do meio no lugar, por simetria; o efeito aparece nos demais frames do segmento.
+- Gesto (`spacing_from_gesture`): arrasto horizontal sobre o segmento = *favor* (transfere entre `λ_out` e `λ_in`; positivo = para a segunda key, saída mais longa); vertical = *ease* (soma aos dois); 250 px por 1,0. Feedback: pontos amostrados da trail prevista se redistribuem ao vivo, coloridos por velocidade (azul → vermelho), obtidos reamostrando o caminho original nos frames remapeados (`remap_frames`: para cada frame do segmento, o frame antigo com o mesmo parâmetro `t`).
+- Efeito colateral: mudar só x altera a inclinação da tangente no key; com `ALIGNED` o handle oposto teria que girar (mudando o segmento vizinho). Duas políticas, ambas implementadas e testadas:
+  - `PRESERVE_PATH` (**padrão**): as duas keys do segmento viram `FREE` nos dois lados; nenhum outro valor muda; a tangente pode quebrar na key (direção espacial contínua, velocidade pode ter salto).
+  - `PRESERVE_SMOOTHNESS`: as duas keys ficam `ALIGNED`, o `y` do handle oposto é realinhado mantendo o seu `x`; o segmento vizinho muda um pouco.
+  Em poses com ease (inclinação ≈ 0) as duas coincidem. **Decisão em aberto** — vira ADR depois do teste do mantenedor (M1); ver [agenda](../agenda.md).
 
 ### Reuso nativo na Iteração 1
 
@@ -91,7 +98,7 @@ Sem reimplementar: **Breakdowner / Push / Relax / Blend to Neighbor** de pose (`
 
 1. Grab com `Δw = 0` não altera nenhum valor.
 2. Arc drag nunca altera `x` de keys/handles nem keys fora do segmento editado (exceto o `y` do handle oposto, girado em modo alinhado; seu `x` também não muda).
-3. Spacing preserva o conjunto de pontos `{(Bx(t), By(t), Bz(t))}` do segmento (amostrado em `t`) quando os canais compartilham keys.
-4. Retime preserva a ordem das keys em toda F-Curve e não cria keys.
+3. Spacing preserva o conjunto de pontos `{(Bx(t), By(t), Bz(t))}` do segmento (amostrado em `t`) quando os canais compartilham o `x` dos handles do segmento (o caso de canais keyados nos mesmos frames com handles automáticos; ver o achado na operação 4). Teste: `test_spacing_keeps_the_world_path`.
+4. Retime preserva a ordem das keys em toda F-Curve e não cria nem remove keys (`test_timing_ops.py`, `test_timing.py`).
 5. Toda operação é idempotente em relação a cancel: snapshot → op → restore = F-Curves bit a bit iguais.
 6. A trail prevista durante o gesto coincide (tolerância 1e-4 m) com a trail recalculada pelo depsgraph depois de soltar, para controles de translação.
