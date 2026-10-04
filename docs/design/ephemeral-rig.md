@@ -2,6 +2,8 @@
 
 > Plano pós-Escopo 1 (depois do PR #11). Decisão: [ADR 0011](../decisions/0011-ephemeral-rig-dense-keys.md). Origem: palestra *Motion Sculpting: A New Animation Paradigm* (Nacho de Andrés, BCON26 — [video.blender.org](https://video.blender.org/w/66d78fe0-0211-4067-b133-88c3f77eb7de), [YouTube](https://www.youtube.com/watch?v=M2J_fQNLDfg)); ver [reference/open-source-projects.md](../reference/open-source-projects.md). O código dele não foi publicado (busca em 2026-10-04): só a ideia e a UX servem de referência.
 
+Capturas de referência (17:26, 23:41, 29:15) ficam **só no repositório local**, em `docs/reference/local/motion-sculpting-bcon26/` (pasta no `.gitignore`, fora do remoto, como `tests/assets/local/`).
+
 ## A ideia
 
 Na palestra não há control rig: o esqueleto é um Mixamo puro (bones `mixamorig:*`), e o "rig denso de FK" é o próprio esqueleto. Quando o animador arrasta um ponto, um IK/cadeia **temporário** é resolvido sobre as rotações FK dentro de uma **janela de tempo** com falloff, e o resultado é gravado como **keys em todo frame** da janela. Ao soltar, o "rig" deixa de existir. Pontos de UI observados:
