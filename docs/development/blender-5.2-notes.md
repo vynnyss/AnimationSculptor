@@ -24,6 +24,17 @@
 - `Action.layers[i].strips[j].channelbag(slot)` ✅ (LMP).
 - Inserção de keys: `FCurve.keyframe_points.insert(frame, value, options={'FAST'})`, `foreach_get/foreach_set` em `co`, `handle_left`, `handle_right` ✅ (API estável); `FCurve.update()` ✅.
 
+## Avaliação de F-Curve (`fcurve.cc`)
+
+Confirmado lendo o fonte do 5.2 e por paridade bit a bit (`core/bezier.py`, 300 curvas aleatórias × 801 tempos) ✅:
+
+- `BKE_fcurve_correct_bezpart` escala **cada handle independentemente**, só quando aquele handle sozinho passa do key vizinho no tempo (`len1 > len`, `len2 > len`). Não é a regra "soma dos dois comprimentos > intervalo" de docs/código antigos; a versão escrita de memória divergia até 1,8 com handles sobrepostos.
+- O limiar de key exata na avaliação (`binarysearch`) é **0,0001 frame** (não 0,01), com checagem de on-key de 1e-8.
+- O parâmetro `t` vem do `findzero`/`solve_cubic` do Blender (primeira raiz, na ordem do Blender) e o valor de `berekeny`; a precisão mistura float32 (keys/handles) e double (cálculo) e precisa ser reproduzida para igualdade exata.
+- O `y` do handle corrigido continua linear nos valores: `y_key − fac·(y_key − y_handle)`, `fac` só depende dos `x`.
+- `FCurve.update()` mantém handles `ALIGNED` escritos colineares ✅ (`test_aligned_handles_written_collinear_survive_update`).
+- Updates de depsgraph de uma Action não têm `is_updated_transform` nem `is_updated_geometry` ✅ (origem do bug corrigido pelo patch P7 do LMP).
+
 ## Background / render
 
 - `blender --background <arquivo> --python script.py -- args` + `bpy.ops.render.render(write_still=True)` com `BLENDER_WORKBENCH` funciona no Windows (5.2.1) ✅ — usado pelos previews de `dev.py assets --preview`.

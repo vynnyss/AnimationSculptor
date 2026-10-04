@@ -49,7 +49,7 @@ Itens a confirmar no Blender 5.2 real estão em [development/blender-5.2-notes.m
 | Retime | `x` de key e handles deslocados juntos. |
 | `VECTOR` | Tratado como `FREE` quando editado (mesma regra do Motion Trail). |
 
-Risco conhecido: a correção automática de `ALIGNED` do Blender usa flags de seleção de handle para decidir qual lado manter. Escrevemos ambos já colineares e testamos que `update()` não os altera (teste de integração dedicado).
+Risco conhecido: a correção automática de `ALIGNED` do Blender usa flags de seleção de handle para decidir qual lado manter. Escrevemos ambos já colineares e **confirmado (2026-10-03, Blender 5.2.1)**: `update()` mantém os handles `ALIGNED` colineares que escrevemos (`test_aligned_handles_written_collinear_survive_update`).
 
 ## Rotação
 

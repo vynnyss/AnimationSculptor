@@ -18,13 +18,15 @@
 
 ## Representação de um canal (`core/fcurve_model`)
 
-Arrays numpy por canal: `x[k], y[k]` (keys), `hl[k,2], hr[k,2]` (handles), `hl_type[k], hr_type[k]`, `interp[k]`. Ida e volta com a F-Curve via `foreach_get/foreach_set`. Avaliação Bézier idêntica à do Blender (`core/bezier`), incluindo a correção de handles que ultrapassam o key vizinho no tempo.
+Arrays numpy por canal: `x[k], y[k]` (keys), `hl[k,2], hr[k,2]` (handles), `hl_type[k], hr_type[k]`, `interp[k]`. Ida e volta com a F-Curve via `foreach_get/foreach_set`. Avaliação Bézier idêntica à do Blender, bit a bit (`core/bezier`), incluindo a correção de handles: no 5.2 cada handle é escalado **independentemente**, só quando aquele handle sozinho ultrapassa o key vizinho no tempo.
 
 Fato que sustenta quase tudo abaixo: **num segmento Bézier, com as coordenadas de tempo (x) dos handles fixas, o parâmetro `t(f)` de cada frame é fixo, e o valor `v(f)` é linear nos valores (y) de keys e handles**:
 
 ```
 v(f) = (1−t)³·y₀ + 3(1−t)²t·yₕ₁ + 3(1−t)t²·yₕ₂ + t³·y₁      (t = t(f), fixo se os x não mudam)
 ```
+
+A linearidade em `y` vale também com a correção de handles do Blender (`BKE_fcurve_correct_bezpart`): o `y` do handle corrigido é `y_key − fac·(y_key − y_handle)`, com `fac` dependendo só dos `x`.
 
 Logo editar valores sem mexer no tempo é um problema **linear e exato** — sem Jacobianos aproximados, sem iteração.
 
@@ -82,6 +84,7 @@ Sem reimplementar: **Breakdowner / Push / Relax / Blend to Neighbor** de pose (`
 | Tangent handles no viewport | Handles Bézier desenhados como tangentes 3D: `R(f)·(hᵧ − y)` por canal; arrastar ⇒ edita y do handle. | Motion Trail (handles), Motiontrail3D |
 | Ranges | Operações limitadas a um intervalo de frames selecionado na trail. | novo |
 | **FK chain sculpt** | Alvo = ponta da cadeia; parâmetros = keys/handles de rotação dos bones da cadeia; Jacobiano `∂p/∂θ` (Euler: `eixo × (p − junta)`; quaternion: analítico com renormalização) × coeficientes de Bernstein (`∂v/∂y`, exatos — o fork usa diferenças finitas). Mínimos quadrados amortecidos; reavaliação pelo depsgraph ao soltar. | Tangent-Space Optimization (Ciccone et al. 2019), port do fork para numpy |
+| **Loop** (Escopos 2–3) | Action marcada como cíclica. *Fechar loop*: para cada F-Curve do escopo, key em `f_end` com o valor da key em `f_start` (inserida se faltar) e tangentes casadas: handle esquerdo de `f_end` = handle esquerdo de `f_start` deslocado de `f_end − f_start` (e o direito de `f_start` espelha o direito de `f_end`), assim a curva é C¹ na emenda. Decisão: a última pose é **explícita** (key duplicada), porque o glTF não tem modificador Cycles — o Godot recebe as amostras e só precisa do modo loop. Edições em `f_start` ou `f_end` se propagam para a outra ponta. | novo; ideia de edição cíclica de *Authoring Motion Cycles* (Ciccone et al. 2017) |
 | Retime com stretch | Mover pose key escalando proporcionalmente keys até as vizinhas (time beads). | Motion Trail |
 
 ## Invariantes (viram testes)

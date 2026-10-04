@@ -11,11 +11,14 @@
 
 5. **[em revisão — PR `fix/grab-autokey-live-trail`] Ajustes do grab após teste do mantenedor**: edição sempre gravada como keyframe (insere key/cria F-Curve de `location` quando falta), trail prevista ao vivo (prefetch de `P(f)`), refresh síncrono da trail ao soltar, gesto nunca fica pendurado. *Resultado: arrastar → soltar mostra a trail nova sem I/Refresh.*
 
+6. **[em revisão — PR `feat/core-bezier-action-io`] `core/` + `anim/`**: `core/fcurve_model`, `core/bezier` (porte da avaliação do Blender 5.2, paridade bit a bit), `core/sculpt_ops.grab_key`, `anim/action_io`, `anim/snapshot`; grab migrado (dívida do spike resolvida; preview ao vivo avaliado com `core.bezier` vetorizado); **bug das trails após edição nativa corrigido** (patch P7 do LMP). *Resultado: matemática do sculpt testável fora do Blender e idêntica ao `FCurve.evaluate`.*
+
 ## Próximo — completar o Escopo 1
 
 - Asset **público** para o CI — **parcialmente atendido**: `tests/blender/public_rig.py` gera em tempo de teste um rig Rigify público (metarig Human → generate) com a Action `asc_public_test` (4 controles, frames 1/12/24) e os testes de trails já rodam no CI com ele. Falta: ataque completo (key poses próprias para as proporções do metarig) e mesh simples, se algum teste precisar.
-- `core/bezier` + `core/fcurve_model` com paridade com `FCurve.evaluate` (teste de integração).
-- `anim/action_io` (slotted actions) + `anim/snapshot` + `anim/spaces` (`P(f)` com prefetch e detecção de constante).
+- ~~`core/bezier` + `core/fcurve_model` com paridade com `FCurve.evaluate`~~ — feito (PR `feat/core-bezier-action-io`): 300 curvas aleatórias × 801 tempos, erro máximo 0 (bit a bit).
+- ~~`anim/action_io` (slotted actions) + `anim/snapshot`~~ — feito (mesmo PR).
+- `anim/spaces` (`P(f)` com prefetch e detecção de constante).
 - `rig/` adapters Rigify e genérico, validados contra o rig gerado.
 - Grab + soft grab; Arc drag; preview analítico; recusas com motivo.
 - Retime e Spacing (escopo personagem) + cor de velocidade.
@@ -24,8 +27,8 @@
 
 ## Depois
 
-- Escopo 2: pipeline Godot (validação, bake opcional, preset glTF, root motion, teste headless).
-- Escopo 3: smooth, make arc, pins, tangent handles, ranges, retime com stretch.
+- Escopo 2: pipeline Godot (validação, bake opcional, preset glTF, root motion, teste headless) + **Loop parte 1** (marcar Action cíclica, "Fechar loop", export como loop) — pedido do mantenedor em 2026-10-03.
+- Escopo 3: smooth, make arc, pins, tangent handles, ranges, retime com stretch, **Loop parte 2** (trail fechada, edição propagada nas pontas).
 - Escopo 4: FK sculpt com quaternions, trails IK/FK, snapping Rigify.
 
 ## Investigação
@@ -33,7 +36,7 @@
 
 - Confirmar no Blender 5.2 real os itens restantes de [development/blender-5.2-notes.md](development/blender-5.2-notes.md) (nomes de opções glTF). Channelbag/slots/Rigify, gizmo `test_select` e `WorkSpaceTool`: ✅ 2026-10-03.
 - Política de spacing `PRESERVE_PATH` vs `PRESERVE_SMOOTHNESS` — decidir com o usuário testando o protótipo; registrar ADR.
-- Comportamento de `fcurve.update()` com handles `ALIGNED` escritos por nós (corrige ou não?).
+- ~~Comportamento de `fcurve.update()` com handles `ALIGNED` escritos por nós~~ — ✅ 2026-10-03: `update()` mantém handles `ALIGNED` escritos colineares (`test_aligned_handles_written_collinear_survive_update`).
 - Custo de `P(f)` por frame (`location_space` exige o frame avaliado; para o preview analítico precisa de frame stepping) no rig Rigify de teste (ms/frame) — define estratégia de prefetch. Medir também o custo de frame completo do gesto (reavaliação do Rigify + redesenho), pois o 0,19 ms medido no spike é só do operador.
 - GameRig e Rigodotify funcionam no 5.2? (antes do Escopo 2).
 - Ler Ciccone et al. 2019 na íntegra (antes do Escopo 4).
@@ -45,12 +48,12 @@
 
 ## Bugs
 
-_(nenhum aberto)_
+_(nenhum aberto)_ — corrigido nesta branch: trail não atualizava após edição nativa (G + I, Graph Editor) até o Refresh; patch P7 do LMP (Action nas dependências do alvo e `depsgraph_changed` aceita updates de Action). Regressão: `tests/ui/scenario_native_edit_refresh.py` (erro 0,154 m → 0,0) e `test_action_update_invalidates_trail`.
 
 ## Dívida técnica
 
-- Spike: o acesso a F-Curves (snapshot, escrita de key+handles, recusas) está em `interaction/sculpt_tool.py`, sem `core/` nem `anim/action_io`. Mover para `core/fcurve_model` + `anim/action_io` + `anim/snapshot` no próximo item (Próximo › `core/bezier` + `fcurve_model`, `anim/action_io`).
-- `location_space` devolve `P` só para o frame avaliado atual; o preview analítico precisa de `P(f)` por frame (frame stepping) — estratégia de prefetch no próximo item.
+- ~~Spike: acesso a F-Curves em `interaction/sculpt_tool.py`~~ — resolvida (PR `feat/core-bezier-action-io`): migrou para `core/` + `anim/action_io` + `anim/snapshot`.
+- `location_space` devolve `P` só para o frame avaliado atual; o prefetch de `P(f)` do grab (frame stepping, cache numpy `(N,4,4)`) ainda mora em `sculpt_tool.py` — mover para `anim/spaces` com detecção de `P` constante (próximo item).
 - Testes de UI só rodam localmente (precisam de display); sem cobertura de GUI no CI.
 - O CI agora roda os testes de trails no rig público gerado, mas os testes do asset de ataque (Vale) continuam só locais (pulam no CI). Resolver com um ataque completo no rig público (Agenda › Próximo).
 - Key poses do ataque são literais locais do rig do Vale: outro personagem Rigify com proporções diferentes gera poses estranhas (o script falha se faltar algum controle, mas não valida plausibilidade).

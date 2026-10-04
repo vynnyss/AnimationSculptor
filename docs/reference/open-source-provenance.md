@@ -4,7 +4,7 @@
 
 ## Estado
 
-Código de terceiros no repo: **Live Motion Path** (`0e173fd`, GPL-3+, copyright "2026 Experience Elysian") vendorizado em `animation_sculptor/trails/lmp/` (`__init__.py`, `compat.py`, `engine.py`, `draw.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py`), na branch `feat/vendor-lmp`. O `LICENSE` upstream é idêntico ao da raiz. O `prefs.py` upstream **não** foi vendorizado; o `ui.py` foi vendorizado com P5. A fachada `trails/provider.py` é código nosso.
+Código de terceiros no repo: **algoritmos de avaliação de F-Curve do Blender** (`fcurve.cc` 5.2, GPL-2+) portados em `animation_sculptor/core/bezier.py` e `compat.get_fcurves` do LMP adaptado em `anim/action_io.py`; e o **Live Motion Path** (`0e173fd`, GPL-3+, copyright "2026 Experience Elysian") vendorizado em `animation_sculptor/trails/lmp/` (`__init__.py`, `compat.py`, `engine.py`, `draw.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py`), na branch `feat/vendor-lmp`. O `LICENSE` upstream é idêntico ao da raiz. O `prefs.py` upstream **não** foi vendorizado; o `ui.py` foi vendorizado com P5. A fachada `trails/provider.py` é código nosso.
 
 Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
 
@@ -14,6 +14,7 @@ Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
 - **P4**: o native solver (`native_object_path`, `native_bone_paths`) salva e restaura `animation_visualization.motion_path` (type, range, frame_start, frame_end, bake_location).
 - **P5**: painéis na aba Animation Sculptor, aninhados em `ASC_PT_main` (painel LMP principal renomeado "Trails"); sem botão no header, sem entradas no popover Overlays, sem preferências próprias; `onion_show` padrão False.
 - **P6** (remover ramos < 5.0 de `compat.py`): **não aplicado**.
+- **P7**: `build_deps` inclui a Action do objeto nas dependências do alvo e `depsgraph_changed` aceita updates de `bpy.types.Action` além de `is_updated_transform`/`is_updated_geometry`. Sem isso, keyar (I) ou editar no Graph Editor após um G nativo só atualizava a Action e a trail ficava no caminho antigo até o Refresh.
 
 `scripts/dev.py` segue a *estrutura* do BlenderAddonTemplate (subcomandos build/test, pytest dentro do Blender), com código escrito do zero. As demais linhas da tabela abaixo são o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
 
@@ -22,14 +23,14 @@ Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
 | Engine de trails, cache, scheduler | Live Motion Path | `engine.py` (`0e173fd`) | GPL-3+ | reutilizado + patches P1–P4 | `animation_sculptor/trails/lmp/engine.py` | no repo (`feat/vendor-lmp`) |
 | Desenho GPU de paths/onion | Live Motion Path | `draw.py` (`0e173fd`) | GPL-3+ | reutilizado + P1 | `trails/lmp/draw.py` | no repo (`feat/vendor-lmp`) |
 | Compat 5.x, handlers, props, ops, ui | Live Motion Path | `compat.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py` (`0e173fd`) | GPL-3+ | reutilizado + P1/P3/P5 (`ui.py` com P5; `prefs.py` não vendorizado; P6 não aplicado) | `trails/lmp/` | no repo (`feat/vendor-lmp`) |
-| Acesso a F-Curves via channelbag | Live Motion Path | `compat.get_fcurves` (`0e173fd`) | GPL-3+ | adaptado (só 5.2, + escrita) | `anim/action_io.py` | planejado |
+| Acesso a F-Curves via channelbag | Live Motion Path | `compat.get_fcurves` (`0e173fd`) | GPL-3+ | adaptado (só 5.2, + escrita) | `anim/action_io.py` | no repo (`feat/core-bezier-action-io`) |
 | Tela ⇄ mundo | Motion Trail | `animation_motion_trail.py`: `screen_to_world`, `world_to_screen` (`14ab927` do espelho) | GPL-2+ | portado | `interaction/picking.py` | planejado (o spike usa `bpy_extras.view3d_utils` direto, sem código portado) |
 | Regras de tipo de handle ao editar | Motion Trail | `drag()` modo location/handle | GPL-2+ | portado | `core/sculpt_ops.py` | planejado |
 | Retime de key / time beads | Motion Trail | `drag()` modo timing | GPL-2+ | portado | `core/timing_ops.py` | planejado |
 | Speed via `handle.x` | Motion Trail | `drag()` modo speed | GPL-2+ | adaptado (pose-wide, x idêntico entre canais) | `core/timing_ops.py` | planejado |
 | Espaço-base `P(f)` | Motiontrail3D (port 4.1) | `calculate_parent_matrix_cache` (`aa13ea9`) | GPL-3 | **algoritmo substituído**: a fórmula do Motiontrail3D é incorreta com `use_local_location = False`; `location_space` usa `Object.convert_space` (código nosso). Motiontrail3D só como referência — nada portado | `anim/spaces.py` | no repo (`feat/interaction-spike`, código próprio) |
-| Busca de `t` por frame / split Bézier | Motiontrail3D (port 4.1) | `bezier_search_frame`, `bezier_split*` (`aa13ea9`) | GPL-3 | portado (vetorizado numpy) | `core/bezier.py` | planejado |
-| Avaliação Bézier de F-Curve | Blender | `BKE_fcurve` / `fcurve.cc` (5.2) | GPL-2+ | algoritmo portado | `core/bezier.py` | planejado |
+| Busca de `t` por frame / split Bézier | Motiontrail3D (port 4.1) | `bezier_search_frame`, `bezier_split*` (`aa13ea9`) | GPL-3 | **não usado**: substituído pelo `findzero`/`solve_cubic` do próprio Blender (porte exato, ver linha abaixo); nada do Motiontrail3D entrou. O split Bézier só voltará se um operador precisar | — | não usado |
+| Avaliação Bézier de F-Curve | Blender | `fcurve.cc` (5.2): `fcurve_eval_keyframes`/`_extrapolate`/`_interpolate`, `binarysearch`, `BKE_fcurve_correct_bezpart`, `findzero`/`solve_cubic`, `berekeny` | GPL-2+ | algoritmo portado (reproduz float32/double; paridade bit a bit no teste) | `core/bezier.py` | no repo (`feat/core-bezier-action-io`) |
 | Solver tangent-space + pins | Interactive Motion Path | `pose_anim_motion_curve.cc`: `MCSolver::solve`, `my_quadprog` (`4b5a6e7`) | GPL-2+ | algoritmo portado (Escopo 4) | `core/solve.py` | planejado |
 | Gaussian/Butterworth smooth | Blender | operadores `graph.gaussian_smooth`, `graph.butterworth_smooth` (5.2) | GPL-2+ | algoritmo portado (Escopo 2) | `core/timing_ops.py` | planejado |
 | Estrutura dev/test | BlenderAddonTemplate | `dev.py`, `run_tests.py` (`2b91ae1`) | GPL-3 | estrutura adaptada, código próprio | `scripts/dev.py`, `tests/blender/run.py` | no repo (esqueleto) |

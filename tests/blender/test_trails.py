@@ -123,6 +123,21 @@ def test_native_solver_settings_restored(public_rig, engine):
     assert {a: getattr(avs, a) for a in original} == original
 
 
+def test_action_update_invalidates_trail(public_rig, provider, engine):
+    """ASC-PATCH P7 (maintainer report): keying with I / editing in the Graph Editor only updates the
+    Action; the trail must still be recomputed (it kept the old path until Refresh)."""
+    from types import SimpleNamespace
+
+    scene = bpy.context.scene
+    _pin(scene, public_rig, ["hand_ik.L"])
+    provider.update_now()
+    assert provider.get_trail(public_rig, "hand_ik.L") is not None
+    action = public_rig.animation_data.action
+    fake = SimpleNamespace(updates=[SimpleNamespace(id=action, is_updated_transform=False, is_updated_geometry=False)])
+    engine.depsgraph_changed(scene, fake)
+    assert provider.get_trail(public_rig, "hand_ik.L") is None
+
+
 def test_trail_on_local_attack_asset(attack_rig, provider):
     """The user's character (local only): trail of the sword hand equals the evaluated rig."""
     scene = bpy.context.scene

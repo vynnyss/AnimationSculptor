@@ -59,6 +59,7 @@ Fechar o teste do MVP de ponta a ponta com o que o Escopo 1 já permite animar.
 - Root motion: decisão e implementação (root deform vs extração).
 - Projeto Godot de teste no repo + validação headless automatizada (posições de referência).
 - Verificação com GameRig e/ou Rigodotify no 5.2.
+- **Loop (Action cíclica)** — parte 1: marcar a Action como loop; operador "Fechar loop" (o último frame recebe exatamente a pose do primeiro em todas as F-Curves do personagem, com tangentes iguais nas duas pontas, para não haver tranco na emenda); validação antes do export (primeira = última pose); export como loop no Godot (sufixo de nome reconhecido pelo importador, conferido no teste headless). Detalhes em [design/motion-sculpt-model.md](design/motion-sculpt-model.md#operações-futuras-escopos-24).
 
 **Pronto quando:** o ataque do Escopo 1 chega ao Godot com posições conferidas automaticamente, pelos dois caminhos de esqueleto suportados.
 
@@ -73,6 +74,7 @@ Ferramentas para polir o movimento sem Graph Editor.
 - Seleção de pontos (box, range), operações em ranges, restrição de eixo, multi-controle.
 - Retime com stretch (time beads), timing avançado (offset/overlap de partes), política final de spacing.
 - Refinos de UX (pie menu, feedback, preferências).
+- **Loop** — parte 2: trail de uma Action em loop desenhada fechada; editar a primeira ou a última key (grab, arc, spacing) mantém as duas pontas iguais; spacing atravessa a emenda.
 
 **Pronto quando:** o ataque pode ser polido (arcos limpos, spacing intencional, sem tremidos) usando só o viewport em controles IK/torso/root.
 
