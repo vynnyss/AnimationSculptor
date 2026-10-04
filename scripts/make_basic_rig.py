@@ -161,21 +161,13 @@ def _weight_orphans(ob, rig):
     return fixed
 
 
-def build(output, test_output=None):
+def create_rig(scene, table, name=RIG_NAME):
+    """Armature object from a bone table: deform bones = controls, quaternions; ``root`` translation only,
+    ``hips`` translation + rotation, every other bone rotation only (ADR 0014)."""
     import bpy
-    import numpy as np
 
-    scene = bpy.context.scene
-    meshes = [ob for ob in scene.objects if ob.type == 'MESH']
-    body = max(meshes, key=lambda ob: len(ob.data.vertices))
-    co = np.empty(len(body.data.vertices) * 3)
-    body.data.vertices.foreach_get("co", co)
-    mw = np.array(body.matrix_world)
-    verts = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
-    table = snap_joints(bone_table(), verts)
-
-    arm = bpy.data.armatures.new(RIG_NAME)
-    rig = bpy.data.objects.new(RIG_NAME, arm)
+    arm = bpy.data.armatures.new(name)
+    rig = bpy.data.objects.new(name, arm)
     scene.collection.objects.link(rig)
     bpy.context.view_layer.objects.active = rig
     for ob in scene.objects:
@@ -183,13 +175,13 @@ def build(output, test_output=None):
     rig.select_set(True)
     bpy.ops.object.mode_set(mode='EDIT')
     eb = arm.edit_bones
-    for name, (h, t, _p, _c) in table.items():
-        b = eb.new(name)
+    for bone_name, (h, t, _p, _c) in table.items():
+        b = eb.new(bone_name)
         b.head, b.tail = h, t
-    for name, (_h, _t, parent, connected) in table.items():
+    for bone_name, (_h, _t, parent, connected) in table.items():
         if parent:
-            eb[name].parent = eb[parent]
-            eb[name].use_connect = connected
+            eb[bone_name].parent = eb[parent]
+            eb[bone_name].use_connect = connected
     for b in eb:
         b.use_deform = b.name != "root"
     bpy.ops.armature.select_all(action='SELECT')
@@ -205,6 +197,50 @@ def build(output, test_output=None):
     bpy.ops.object.mode_set(mode='OBJECT')
     arm.display_type = 'OCTAHEDRAL'
     rig.show_in_front = True
+    return rig
+
+
+def add_test_action(rig, scene):
+    """The small deterministic Action of the test asset (TEST_KEYS rotations, TEST_HIPS location)."""
+    import bpy
+    from bpy_extras import anim_utils
+
+    action = bpy.data.actions.new(ACTION_NAME)
+    slot = action.slots.new(id_type='OBJECT', name=rig.name)
+    adt = rig.animation_data_create()
+    adt.action, adt.action_slot = action, slot
+    cb = anim_utils.action_ensure_channelbag_for_slot(action, slot)
+    animated = sorted({b for keys in TEST_KEYS.values() for b in keys})
+    for bone in animated:
+        for i in range(4):
+            fc = cb.fcurves.ensure(f'pose.bones["{bone}"].rotation_quaternion', index=i, group_name=bone)
+            for frame, keys in TEST_KEYS.items():
+                fc.keyframe_points.insert(frame, keys.get(bone, (1.0, 0.0, 0.0, 0.0))[i], options={'FAST'})
+            fc.update()
+    for i in range(3):
+        fc = cb.fcurves.ensure('pose.bones["hips"].location', index=i, group_name="hips")
+        for frame, loc in TEST_HIPS.items():
+            fc.keyframe_points.insert(frame, loc[i], options={'FAST'})
+        fc.update()
+    scene.frame_start, scene.frame_end = FRAME_START, FRAME_END
+    scene.frame_set(FRAME_START)
+    scene["asc_asset_rig"] = rig.name
+    return action
+
+
+def build(output, test_output=None):
+    import bpy
+    import numpy as np
+
+    scene = bpy.context.scene
+    meshes = [ob for ob in scene.objects if ob.type == 'MESH']
+    body = max(meshes, key=lambda ob: len(ob.data.vertices))
+    co = np.empty(len(body.data.vertices) * 3)
+    body.data.vertices.foreach_get("co", co)
+    mw = np.array(body.matrix_world)
+    verts = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
+    table = snap_joints(bone_table(), verts)
+    rig = create_rig(scene, table)
 
     # bind every mesh with automatic weights (visibility kept as in the source)
     hidden = {ob.name: ob.hide_get() for ob in meshes}
@@ -225,28 +261,7 @@ def build(output, test_output=None):
     print(f"[basic-rig] wrote {output} ({len(table)} bones) weights: {report}")
 
     if test_output:
-        action = bpy.data.actions.new(ACTION_NAME)
-        slot = action.slots.new(id_type='OBJECT', name=rig.name)
-        adt = rig.animation_data_create()
-        adt.action, adt.action_slot = action, slot
-        from bpy_extras import anim_utils
-
-        cb = anim_utils.action_ensure_channelbag_for_slot(action, slot)
-        animated = sorted({b for keys in TEST_KEYS.values() for b in keys})
-        for bone in animated:
-            for i in range(4):
-                fc = cb.fcurves.ensure(f'pose.bones["{bone}"].rotation_quaternion', index=i, group_name=bone)
-                for frame, keys in TEST_KEYS.items():
-                    fc.keyframe_points.insert(frame, keys.get(bone, (1.0, 0.0, 0.0, 0.0))[i], options={'FAST'})
-                fc.update()
-        for i in range(3):
-            fc = cb.fcurves.ensure('pose.bones["hips"].location', index=i, group_name="hips")
-            for frame, loc in TEST_HIPS.items():
-                fc.keyframe_points.insert(frame, loc[i], options={'FAST'})
-            fc.update()
-        scene.frame_start, scene.frame_end = FRAME_START, FRAME_END
-        scene.frame_set(FRAME_START)
-        scene["asc_asset_rig"] = rig.name
+        add_test_action(rig, scene)
         bpy.ops.wm.save_as_mainfile(filepath=test_output, copy=True)
         print(f"[basic-rig] wrote {test_output} (action {ACTION_NAME!r})")
 

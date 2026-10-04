@@ -568,6 +568,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     def _switch_to_rotate(self, context, event):
         """R pressed during a drag: the gesture becomes a turn of the same part, from where the mouse is."""
         self.edit.restore()
+        # re-apply the restored Action at this frame (a plain depsgraph update keeps the dragged pose): the
+        # pivot and the next sampling must see the pose without the drag
+        context.scene.frame_set(context.scene.frame_current)
         settings = _settings()
         radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
         ob = bpy.data.objects[self.obj_name]
