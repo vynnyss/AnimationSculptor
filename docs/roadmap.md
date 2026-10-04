@@ -51,6 +51,14 @@ Blender 5.2 → abrir personagem Rigify → keyar key poses (I, normal)
 
 ---
 
+## UI de tempo (entre o Escopo 1 e o 2)
+
+Fase 1 do [rig efêmero](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-main-depois-do-merge-do-11), independente do solve: **régua de tempo no viewport** (janela do gesto com falloff assimétrico, passado em vermelho e futuro em verde, pontas arrastáveis; o soft grab passa a usá-la), **paleta passado/futuro** nas trails e no onion skin, e as configurações do gesto na **barra nativa da ferramenta** (`WorkSpaceTool.draw_settings`).
+
+**Pronto quando:** soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua e salvos no arquivo; trails vermelho/verde.
+
+---
+
 ## Escopo 2 — Do Blender ao Godot
 
 Fechar o teste do MVP de ponta a ponta com o que o Escopo 1 já permite animar.
@@ -70,7 +78,7 @@ Fechar o teste do MVP de ponta a ponta com o que o Escopo 1 já permite animar.
 Ferramentas para polir o movimento sem Graph Editor.
 
 - Smooth espacial (Relax/Straighten) e temporal (Gaussian/Butterworth portados).
-- Make Arc; Pins (restrições no `core/solve`); tangent handles 3D editáveis.
+- Make Arc; Pins (restrições no `core/solve`); tangent handles 3D editáveis; **spline de movimento** (curva-guia com `Strength`/`Aim` aplicada a um trecho de tempo — ver [design/ephemeral-rig.md](design/ephemeral-rig.md#spline-de-movimento)).
 - Seleção de pontos (box, range), operações em ranges, restrição de eixo, multi-controle.
 - Retime com stretch (time beads), timing avançado (offset/overlap de partes), política final de spacing.
 - Refinos de UX (pie menu, feedback, preferências).
@@ -82,10 +90,12 @@ Ferramentas para polir o movimento sem Graph Editor.
 
 ## Escopo 4 — FK e IK/FK
 
-- FK chain sculpt: arrastar a ponta de uma cadeia FK (braço com espada, cabeça, coluna) ⇒ solve nas rotações (Tangent-Space portado para numpy, **com quaternions**).
+- FK chain sculpt pelo **rig efêmero** ([design/ephemeral-rig.md](design/ephemeral-rig.md), [ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md)): arrastar a ponta de uma cadeia FK (braço com espada, cabeça, coluna) ⇒ IK temporário resolvido em `core/` (2 bones analítico; cadeias longas por mínimos quadrados com iterações fixas), **com quaternions**, numa janela de tempo com falloff, gravando **keys densas** (uma por frame) só na janela. Escopos `Ponta`/`Membro`/`Corpo`. Funciona em Rigify (controles FK) e no adapter genérico (esqueleto sem control rig). Substitui o port do Tangent-Space.
+- Arrastar o bone direto no viewport (sem mirar na trail); orientação da ponta `Mundo`/`Local`.
 - Trails cientes do estado IK/FK (mostrar o controle ativo do membro).
 - Snapping IK↔FK reutilizando os operadores do Rigify; bake de switch.
-- Pins no FK (ex.: segurar a mão parada enquanto o tronco gira).
+- Pins no FK (ex.: segurar a mão parada enquanto o tronco gira; pés fixos no escopo `Corpo`).
+- "Simplificar" uma região densa de volta a keys esparsas (decidir na fase 3 do rig efêmero se entra aqui ou no Escopo 3).
 
 **Pronto quando:** um ataque com braço FK (swing de espada) pode ser esculpido no viewport ⇒ **MVP completo** (teste de aceitação de [project.md](project.md)).
 

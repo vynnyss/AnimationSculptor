@@ -92,6 +92,10 @@ Durante `Dragging`: engine do LMP suspenso (sem frame stepping concorrente), pre
 - Playback: o overlay de sculpt (hover, anéis, preview) **não é desenhado enquanto a animação toca** quando "Esconder overlay no playback" (`Scene.asc_sculpt.hide_on_playback`, padrão ligado) está ativo; as trails seguem a configuração do LMP ("Hide Motion Path During Playback").
 - Feedback a cada mouse move deve custar < 16 ms para um controle com ~200 frames (orçamento a medir; ver [testing/strategy.md](../testing/strategy.md#profiling)).
 
+## Planejado: UI de tempo e rig efêmero
+
+Detalhe em [ephemeral-rig.md](ephemeral-rig.md#ui): régua de tempo no viewport (janela do gesto, passado vermelho/futuro verde, pontas arrastáveis, raio assimétrico), paleta passado/futuro nas trails e no onion skin, configurações na barra nativa da ferramenta (`draw_settings`), e LMB num controle só de rotação passa de recusa a **gesto efêmero** (Escopo 4).
+
 ## Fora do escopo da Iteração 1 (planejado)
 
 Seleção múltipla de pontos com box select, ranges, pins visíveis, tangent handles 3D, restrição a eixo (X/Y/Z) durante grab, pie menu de ferramentas, edição de trail de vários controles ao mesmo tempo.

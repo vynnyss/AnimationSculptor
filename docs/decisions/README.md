@@ -11,11 +11,12 @@ ADRs leves inspirados em [MADR](https://github.com/adr/madr). Um arquivo por dec
 | [0003](0003-native-blender-animation-output.md) | Saída é animação Blender nativa (Action/F-Curves) | aceito |
 | [0004](0004-blender-5.2-baseline.md) | Blender 5.2 LTS como baseline único | aceito |
 | [0005](0005-extension-not-fork.md) | Extensão Python, não fork nem módulo nativo | aceito |
-| [0006](0006-tangent-space-deferred.md) | Tangent-Space fora da Iteração 1; solve linear para translação | aceito |
+| [0006](0006-tangent-space-deferred.md) | Tangent-Space fora da Iteração 1; solve linear para translação | aceito; a parte de FK será substituída por 0011 quando ele for aceito |
 | [0007](0007-gpl-and-reuse-policy.md) | GPL-3.0-or-later e política de reutilização | aceito |
 | [0008](0008-pure-python-core.md) | Core puro (numpy, sem bpy) separado da integração | aceito |
 | [0009](0009-export-native-bake-gltf.md) | Export via bake/amostragem nativa + glTF; sem conversor de esqueleto | aceito |
 | [0010](0010-tool-gizmo-modal-interaction.md) | Interação: WorkSpaceTool + Gizmo (hover) + modal (gesto) | aceito — validado pelo spike (2026-10-03) |
+| [0011](0011-ephemeral-rig-dense-keys.md) | FK por rig efêmero (solve em `core/`) com keys densas na janela de tempo | proposto |
 
 ## Modelo
 
