@@ -1,6 +1,6 @@
 # Reforma de UX: agarrar o corpo, ferramentas na lateral, régua, onion skin
 
-> Plano aprovado em conversa com o mantenedor em 2026-10-04 (decisões abaixo), a implementar em PRs pequenos depois do merge deste documento. Decisão de arquitetura: [ADR 0013](../decisions/0013-body-and-trail-interaction.md). Referência: palestra *Motion Sculpting* (BCON26), capturas 17:26, 23:41 e 29:15 em `docs/reference/local/motion-sculpting-bcon26/` (só local).
+> Plano aprovado em conversa com o mantenedor em 2026-10-04 (decisões abaixo). **Implementado na 0.7.0** em um único PR (`feat/ux-reform`, pedido do mantenedor: entregas maiores); diferenças em relação ao plano em "Notas da implementação". Decisão de arquitetura: [ADR 0013](../decisions/0013-body-and-trail-interaction.md). Referência: palestra *Motion Sculpting* (BCON26), capturas 17:26, 23:41 e 29:15 em `docs/reference/local/motion-sculpting-bcon26/` (só local).
 
 ## Por que
 
@@ -101,9 +101,9 @@ Animation Sculptor
 
 ## "Ligar Rigify"
 
-- **Desligado**: esconde todas as coleções de bones da armature ativa (os bones somem; a malha fica). O modo Corpo continua funcionando, porque o picking é na malha.
-  - Os nomes das coleções que estavam visíveis são guardados em `Scene.asc_sculpt` (configuração de cena), para restaurar exatamente.
-- **Ligado**: restaura as coleções.
+- **Desligado**: esconde os bones (e as formas dos controles do Rigify) em todos os viewports 3D, pela opção de overlay `show_bones`; a malha fica. O modo Corpo continua funcionando, porque o picking é na malha.
+- **Ligado**: mostra de novo.
+- (Implementação: o plano previa esconder as coleções de bones e guardar quais estavam visíveis; o overlay faz o mesmo sem guardar estado, vale para esqueletos sem coleções e é trivialmente reversível.)
 - Nada é desabilitado no rig e nenhuma animação muda; o modo Trail continua disponível.
 - Em esqueletos sem Rigify, o mesmo toggle esconde ou mostra o esqueleto.
 
@@ -134,6 +134,18 @@ Pincel temporal:
    - toggle "Ligar Rigify".
 3. **UX-3 — Onion skin**: os toggles, a janela da régua como range, o onion expandido (patch P11).
 4. **UX-4 — Smooth e cabeça em duas etapas**: o pincel Smooth e a decisão 10.
+
+## Notas da implementação (0.7.0)
+
+- **Um PR só** com UX-1 a UX-4 (pedido do mantenedor). Régua v2, onion skin (provider + patch P11) e o núcleo do Smooth (`core/smooth.py`) feitos por agentes em worktrees isolados e integrados.
+- **Ferramentas**: `animation_sculptor.tip` (Ponta), `.sculpt` (Membro — mantém o id antigo, que keymaps e arquivos da 0.3–0.6 usam), `.body` (Corpo), `.smooth` (Smooth); ícones nativos (`ops.pose.relax`, `ops.pose.breakdowner`, `ops.pose.push`, `ops.gpencil.sculpt_blur`). O escopo do gesto vem da ferramenta ativa; `Shift+Alt+K` → `asc.activate_tool` (a última usada, Membro na primeira vez).
+- **Modo** (`Scene.asc_sculpt.interaction_mode`, padrão **Corpo**): trocar para Trail liga as trails; no modo Corpo a ferramenta não liga as trails sozinha (viewport limpo).
+- **Picking na malha** (`interaction/body_pick.py`): `Scene.ray_cast` no depsgraph; malha deformada pela armature ativa (modificador Armature) ou presa a um bone dela (adereço, ex.: espada → o bone do adereço); bone deformador = maior peso somado na face (topologia igual) ou o segmento mais próximo; realce = triângulos com peso dominante do bone (cache por malha), desenhados em POST_VIEW sobre a malha avaliada.
+- **Mapa DEF → controle** (`RigAdapter.control_for_deform`, `rig.CHAIN`/`rig.IK`): genérico = o próprio bone; Rigify como no passo 4 de "Agarrar o corpo" (dedos e rosto: o controle de mesmo nome, senão a cabeça).
+- **Ponto agarrado**: `core/ephemeral.Chain.point` (ponto no espaço local do último bone, constante ou por frame); `ChainEdit(point_world=…)`.
+- **Pescoço/cabeça do Rigify no Corpo** (decisão 10), ao soltar, medido no rig (frame stepping, passos fixos): (1) o chest inclina até a base do pescoço andar `w·Δ` (3 iterações de ponto fixo); (2) cabeça: o pescoço aponta para levar o pivô da cabeça ao ponto do IK de 2 bones; (3) o bone agarrado aponta o ponto para o alvo. Medido no rig gerado: cabeça 0,00 mm, pescoço 0,78 mm. Durante o arrasto o preview mostra só a inclinação.
+- **Smooth**: `interaction/smooth_edit.SmoothEdit` sobre os canais animados do controle da parte (location, rotação do modo, escala); quaternions em bloco; 8 px de arrasto = 1 passe; força e largura (σ) nos Parâmetros.
+- **Testes veem a malha** (pedido do mantenedor): o asset local mantém as malhas da Vale visíveis (gerador v2) e o rig público ganhou um corpo simples pesado (`tests/blender/body_mesh.py`); `tests/blender/deform_check.py` confere a deformação da pele nos gestos.
 
 ## Testes (por fase)
 

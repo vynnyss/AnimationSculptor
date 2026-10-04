@@ -1,6 +1,6 @@
 # 0013 — Interação em dois modos: agarrar o corpo (pose/arco) e agarrar a trail (tempo)
 
-- Status: proposto
+- Status: aceito (2026-10-04: plano aprovado no #18; implementado na 0.7.0)
 - Data: 2026-10-04
 
 ## Contexto e problema

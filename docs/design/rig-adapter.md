@@ -40,6 +40,8 @@ class RigAdapter:
     def ephemeral_chain(self, arm_ob, bone, scope) -> (list[str], str)   # cadeia do rig efêmero (raiz → bone) e motivo de recusa; scope TIP/LIMB/BODY
     def body_override(self, arm_ob, bone) -> bool          # no Corpo, arrastar a ponta deste controle gira o corpo mesmo se ele transla
     def ephemeral_pins(self, arm_ob, chain) -> (list[(str, list[str])], str)   # membros presos (pés) do Corpo
+    def control_for_deform(self, arm_ob, deform_bone) -> (str, str, str)       # agarrar o corpo: (controle, CHAIN|IK, motivo)
+    def ephemeral_aim(self, arm_ob, bone, scope) -> list[str]                    # bones apontados depois da cadeia (Rigify: neck[, head])
 
 register_adapter(cls)      # decorator; registro na ordem de import
 get_adapter(arm_ob)        # melhor `detect`; cache por (nome do objeto, nome dos dados, rig_id)
