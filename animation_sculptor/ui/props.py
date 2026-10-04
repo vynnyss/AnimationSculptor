@@ -69,7 +69,9 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
     ephemeral_scope: EnumProperty(
         name="Escopo FK",
         items=(('LIMB', "Membro", "Arrastar a ponta de um controle FK gira o membro inteiro até ele (braço, perna)"),
-               ('TIP', "Ponta", "Arrastar a ponta de um controle FK gira só aquele bone, para apontar")),
+               ('TIP', "Ponta", "Arrastar a ponta de um controle FK gira só aquele bone, para apontar"),
+               ('BODY', "Corpo", "Arrastar a ponta do bone (tronco, pescoço, cabeça) gira a coluna; "
+                                 "pernas FK ficam com os pés no lugar")),
         default='LIMB',
         description="O que o gesto em controles só de rotação (FK) pode girar",
     )

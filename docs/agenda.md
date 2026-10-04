@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — rig efêmero (fase 3 em revisão, fase 4 a seguir); M1 pelo mantenedor
+## Agora — rig efêmero (fases 3 e 4 em revisão); M1 pelo mantenedor
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -29,11 +29,13 @@
 
 14. **[em revisão — PR `feat/ephemeral-gesture`, a partir da `main`] Rig efêmero, fase 3 — gesto FK no viewport** (0.5.0): `RigAdapter.ephemeral_chain` (Rigify + genérico), `anim/spaces.prefetch_chain`, `interaction/ephemeral_edit.ChainEdit`, gesto em controles só de rotação (antes recusados), escopo `Membro`/`Ponta` e orientação `Mundo`/`Local` na barra e no painel. *Resultado: ponta da mão FK sob o cursor (0,00 px), keys densas só na janela, 1 Ctrl+Z, Esc bit a bit, 3,4 ms por mouse move; funciona sem Rigify (unit 538, blender 125, ui 75).*
 
-> Estado dos PRs: #1–#11, #13–#15 estão na `main`; a fase 3 do rig efêmero está em revisão.
+15. **[em revisão — PR `feat/ephemeral-body`, empilhado sobre o #16] Rig efêmero, fase 4** (0.6.0): escopo `Corpo` (DLS na coluna, pernas FK presas), arrastar a ponta do bone direto, validação de rigidez (`anim/spaces.chain_rigidity`), clique sem arrasto não escreve nada. *Resultado: inclinar o corpo pela cabeça (genérico) ou pelo `chest` (Rigify) com os pés parados; coluna do Rigify acima do `chest` recusada com motivo (não rígida).*
+
+> Estado dos PRs: #1–#11, #13–#15 estão na `main`; #16 (fase 3) e a fase 4 (empilhada sobre ele) estão em revisão.
 
 ## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
 
-- ~~**Rig efêmero, fase 2**~~ — feito (item 13). Fase 3: item 14. Próximo: **fase 4** (`Corpo`, pins, arrastar o bone direto). Era: ([design/ephemeral-rig.md](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-main-depois-do-merge-do-11)): `core/kinematics` (FK numpy, quaternion/Euler com continuidade, IK analítico de 2 bones, rotação mínima), `core/ephemeral`, `core/dense`; só testes (unit + FK numpy = depsgraph no rig público). Depois a **fase 3** (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico, keys densas, preview, undo/cancel) e a **fase 4** (`Corpo`, pins, arrastar o bone direto). Ordem decidida pelo mantenedor em 2026-10-04: logo depois da UI de tempo, antes do Escopo 2.
+- ~~**Rig efêmero, fase 2**~~ — feito (item 13). Fase 3: item 14; fase 4: item 15. Era: ([design/ephemeral-rig.md](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-main-depois-do-merge-do-11)): `core/kinematics` (FK numpy, quaternion/Euler com continuidade, IK analítico de 2 bones, rotação mínima), `core/ephemeral`, `core/dense`; só testes (unit + FK numpy = depsgraph no rig público). Depois a **fase 3** (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico, keys densas, preview, undo/cancel) e a **fase 4** (`Corpo`, pins, arrastar o bone direto). Ordem decidida pelo mantenedor em 2026-10-04: logo depois da UI de tempo, antes do Escopo 2.
 
 - Asset **público** para o CI — **parcialmente atendido**: `tests/blender/public_rig.py` gera em tempo de teste um rig Rigify público (metarig Human → generate) com a Action `asc_public_test` (4 controles, frames 1/12/24) e os testes de trails já rodam no CI com ele. Falta: ataque completo (key poses próprias para as proporções do metarig) e mesh simples, se algum teste precisar.
 - ~~`core/bezier` + `core/fcurve_model` com paridade com `FCurve.evaluate`~~ — feito (PR `feat/core-bezier-action-io`): 300 curvas aleatórias × 801 tempos, erro máximo 0 (bit a bit).
@@ -58,7 +60,8 @@
 
 - ~~**Ordem do rig efêmero no roadmap**~~ — decidido pelo mantenedor em 2026-10-04: rig efêmero logo depois da UI de tempo, antes do Escopo 2.
 - ~~Custo do preview do gesto efêmero~~ — medido na fase 2: 3,4 ms para 3 bones × 200 frames (numpy puro); DLS de 5 bones 70 ms ⇒ `Corpo` com preview reduzido (fase 4).
-- "Simplificar" regiões densas: `graph.decimate` via `temp_override` ou port do algoritmo.
+- "Simplificar" regiões densas: `graph.decimate` via `temp_override` ou port do algoritmo — decidir com o mantenedor se entra no Escopo 3 ou 4.
+- `Corpo` na coluna do Rigify acima do `chest` (não rígida: MCH de distribuição + Neck/Head Follow): Jacobiano numérico pelo depsgraph? Hoje recusado com motivo.
 
 
 - Confirmar no Blender 5.2 real os itens restantes de [development/blender-5.2-notes.md](development/blender-5.2-notes.md) (nomes de opções glTF). Channelbag/slots/Rigify, gizmo `test_select` e `WorkSpaceTool`: ✅ 2026-10-03.

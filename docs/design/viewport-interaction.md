@@ -17,6 +17,8 @@
 | LMB arrastar | key point | **Grab** (soft: roda do mouse ou `[`/`]` mudam o raio em frames durante o gesto; raio 0 = só o ponto; vizinhas nunca são criadas) |
 | LMB arrastar | sampled point | **Arc drag** (resolve os handles do segmento; keys e timing intactos) |
 | LMB arrastar | qualquer ponto da trail de um **controle só de rotação** (FK) | **Gesto efêmero** (0.5.0): gira a cadeia (`Membro`: braço/perna até o bone; `Ponta`: só ele) para a ponta seguir o mouse em todo frame da janela da régua, com falloff; grava keys em todo frame da janela (rotação), nada fora dela muda; mão/pé mantém a orientação `Mundo` (padrão) ou `Local`; roda/`[ ]` mudam a janela; membro em IK, `AXIS_ANGLE` e bone com constraint recusam com motivo |
+| LMB arrastar | **ponta (tail) de um bone selecionado**, no frame atual, sem ponto de trail por perto | mesmo gesto efêmero, sem mirar na trail (0.6.0); no escopo `Corpo` também a ponta de `chest`/`hips`/`neck`/`head` (Rigify) ou de qualquer bone (genérico): a coluna gira e as pernas FK ficam com os pés presos |
+| Clique sem arrastar | ponto/ponta | não escreve nada (0.6.0) |
 | Ctrl+LMB arrastar | key point | **Retime** da pose key (**implementado**: ao longo da trail; frames inteiros; Shift = sub-frame e precisão) |
 | Ctrl+LMB arrastar | segmento (in-between) | **Spacing** (**implementado**: horizontal = favor, vertical = ease, 250 px por 1,0) |
 | Shift (segurando) | durante gesto | precisão ×0.1 |

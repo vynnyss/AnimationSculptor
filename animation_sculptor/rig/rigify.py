@@ -2,7 +2,7 @@
 """Rigify adapter (rig generated from the "Human" metarig). Map validated on Blender 5.2.1 against the
 public generated rig and the maintainer's character (docs/design/rig-adapter.md)."""
 
-from .adapter import LIMB, RigAdapter, register_adapter
+from .adapter import BODY, LIMB, RigAdapter, register_adapter
 from .concepts import SIDES
 
 NON_CONTROL_PREFIXES = ("ORG-", "MCH-", "DEF-", "VIS_", "WGT-")
@@ -25,6 +25,10 @@ _CHAINS = {
     "foot": ("thigh", "shin", "foot"),
 }
 FK_CONCEPTS = ("upper_arm", "forearm", "hand", "thigh", "shin", "foot")
+# Corpo (ADR 0011, phase 4): torso turns the whole upper body; neck/head hang from the spine through
+# Follow constraints (not rigid — the gesture's rigidity check refuses them, see docs)
+_BODY = ("torso", "chest", "neck", "head")
+_BODY_OVERRIDE = ("hips", "chest", "neck", "head")
 _SWITCH = {"arm": "upper_arm_parent", "leg": "thigh_parent"}   # holds the IK_FK property (0 = IK, 1 = FK)
 
 
@@ -68,6 +72,15 @@ class RigifyAdapter(RigAdapter):
         the hierarchy walk of the base class would stop there); a limb in IK mode is refused."""
         concept = self.concept_for(bone_name)
         base, _, side = (concept or "").partition(".")
+        if scope == BODY and base in _BODY_OVERRIDE:
+            info = self.classify(arm_ob, bone_name)
+            if info is None or not info.rotates:
+                return [], "controle travado (sem rotação livre)"
+            if base == "hips":
+                return [CONCEPT_TO_BONE["torso"], bone_name], ""
+            return [CONCEPT_TO_BONE[c] for c in _BODY[:_BODY.index(base) + 1]], ""
+        if scope == BODY:
+            scope = LIMB          # limbs: the body scope turns the limb
         if base not in FK_CONCEPTS:
             return super().ephemeral_chain(arm_ob, bone_name, "TIP")
         info = self.classify(arm_ob, bone_name)
@@ -83,6 +96,22 @@ class RigifyAdapter(RigAdapter):
         links = _CHAINS["hand" if limb == "arm" else "foot"]
         upto = links[:links.index(base) + 1]
         return [CONCEPT_TO_BONE[f"{link}.{side}"] for link in upto], ""
+
+    def body_override(self, arm_ob, bone_name):
+        base = (self.concept_for(bone_name) or "").partition(".")[0]
+        return base in _BODY_OVERRIDE and super().body_override(arm_ob, bone_name)
+
+    def ephemeral_pins(self, arm_ob, chain):
+        """Legs in FK keep their feet when the body turns (pinned to the chain root); legs in IK are
+        pinned by the rig itself (``foot_ik`` hangs from the root)."""
+        if not chain or self.concept_for(chain[0]) != "torso":
+            return [], ""
+        pins = []
+        for side in ("L", "R"):
+            state = self.ik_fk_state(arm_ob, f"leg.{side}")
+            if state is not None and state >= 0.5:
+                pins.append((chain[0], [CONCEPT_TO_BONE[f"{c}.{side}"] for c in _CHAINS["foot"]]))
+        return pins, ""
 
     def translation_allowed(self, bone_name):
         # FK chain controls rotate; Rigify leaves location unlocked on the chain roots (upper_arm_fk,

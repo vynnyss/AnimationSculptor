@@ -12,12 +12,17 @@ Solve per chain length (deterministic, docs "Solve"):
 - 3 bones (``Membro``: upper, lower, hand): two-bone IK on the first two so the hand's head goes where
   the hand must be; orientation ``WORLD`` keeps the hand's world orientation (the tail lands exactly),
   ``LOCAL`` keeps its local rotation (the hand turns with the forearm).
-- more bones: damped least squares with fixed iterations (``core/solve``).
+- more bones (or ``solver=DLS``, the ``Corpo`` scope): damped least squares with fixed iterations
+  (``core/solve``); with ``WORLD`` the last bone keeps its world orientation and the others carry it.
+
+Pins (``Corpo``): FK limbs hanging from a chain bone whose end must stay put in world (feet). After the
+chain moves, each pinned limb is re-solved with the two-bone IK so its end (and, for three bones, the
+last bone's world orientation) is where it was.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -25,6 +30,7 @@ from . import kinematics as kin
 from . import solve
 
 WORLD, LOCAL = "WORLD", "LOCAL"
+AUTO, DLS = "AUTO", "DLS"
 REACH_TOL = 1e-6
 
 
@@ -65,11 +71,24 @@ class Chain:
 
 
 @dataclass
+class Pin:
+    """An FK limb (2 or 3 bones) hanging from chain bone ``parent`` whose end stays put in world.
+    ``rel`` (N, 4, 4): from that chain bone's world matrix to the limb root's parent space;
+    ``limb.base`` is ignored (rebuilt from the chain before and after the edit)."""
+
+    parent: int
+    rel: np.ndarray
+    limb: Chain
+
+
+@dataclass
 class Result:
     rot: list               # K arrays, same layout as Chain.rot
     tip: np.ndarray         # (N, 3) tip after the edit (FK of the new rotations)
     target: np.ndarray      # (N, 3) wanted tip
     reached: np.ndarray     # (N,) bool: |tip − target| < REACH_TOL
+    pins: list = field(default_factory=list)    # per Pin: its bones' new rotations (Chain.rot layout)
+    pins_reached: np.ndarray = None             # (N,) bool: every pinned end stayed put (False: leg overstretched)
 
 
 def check(chain: Chain) -> str:
@@ -96,13 +115,31 @@ def _frames_rot(chain, world, i):
     return frame[:, :3, :3]
 
 
-def _own_deltas(chain, world, target, orientation, bend_axis):
+def _dls_deltas(heads, tails, target, orientation):
+    """Own deltas from the damped least squares; ``WORLD`` keeps the last bone's world orientation."""
+    n, k = heads.shape[:2]
+    if orientation != WORLD or k < 2:
+        deltas, _tip = solve.dls_chain(heads, tails[:, -1], target)
+        return deltas
+    d, _tip = solve.dls_chain(heads[:, :k - 1], heads[:, k - 1], target - (tails[:, -1] - heads[:, -1]))
+    deltas = np.broadcast_to(np.eye(3), (n, k, 3, 3)).copy()
+    deltas[:, :k - 1] = d
+    total = np.broadcast_to(np.eye(3), (n, 3, 3)).copy()
+    for j in range(k - 1):
+        total = total @ d[:, j]
+    deltas[:, k - 1] = np.linalg.inv(total)
+    return deltas
+
+
+def _own_deltas(chain, world, target, orientation, bend_axis, solver=AUTO):
     """Own world turn of each bone (N, K, 3, 3) in the old configuration."""
     n, k = chain.frame_count, chain.bone_count
     heads = world[:, :, :3, 3]
     tails = kin.tails(world, chain.lengths)
     eye = np.broadcast_to(np.eye(3), (n, 3, 3))
     deltas = np.broadcast_to(np.eye(3), (n, k, 3, 3)).copy()
+    if solver == DLS and k > 1:
+        return _dls_deltas(heads, tails, target, orientation)
     if k == 1:
         deltas[:, 0] = kin.aim(heads[:, 0], tails[:, 0], target)
     elif k in (2, 3):
@@ -119,8 +156,49 @@ def _own_deltas(chain, world, target, orientation, bend_axis):
         if k == 3:
             deltas[:, 2] = np.linalg.inv(d1 @ d2) if orientation == WORLD else eye
     else:
-        deltas, _tip = solve.dls_chain(heads, tails[:, -1], target)
+        deltas = _dls_deltas(heads, tails, target, orientation)
     return deltas
+
+
+def _native(r, old, mode, locks, active):
+    """Rotation matrices → the bone's rotation values, continuous with ``old``; weight 0 ⇒ ``old``."""
+    if mode == "QUATERNION":
+        q = kin.mat3_to_quat(r)
+        vals = np.where((np.sum(q * old, axis=1) < 0.0)[:, None], -q, q)   # same hemisphere as before
+    else:
+        vals = kin.mat3_to_euler(r, mode, compatible=old)
+    vals = _apply_locks(vals, old, mode, locks)
+    return np.where(active[:, None], vals, old)
+
+
+def _solve_pin(pin, world_old, world_new, active):
+    """Re-solve one pinned limb after the chain moved: same end position (and last-bone world turn)."""
+    limb = pin.limb
+    k = limb.bone_count
+    if k not in (2, 3):
+        raise ValueError("pinned limbs have 2 or 3 bones")
+    old_limb = replace(limb, base=world_old[:, pin.parent] @ pin.rel)
+    new_limb = replace(limb, base=world_new[:, pin.parent] @ pin.rel)
+    rot3 = limb.rotation_matrices()
+    wo = old_limb.world(rot3)
+    wn = new_limb.world(rot3)
+    heads_n = wn[:, :, :3, 3]
+    if k == 2:
+        c, t = kin.tails(wn[:, 1], limb.lengths[1]), kin.tails(wo[:, 1], limb.lengths[1])
+    else:
+        c, t = heads_n[:, 2], wo[:, 2, :3, 3]
+    d1, d2, tip = kin.two_bone_ik(heads_n[:, 0], heads_n[:, 1], c, t, wn[:, 1, :3, 0])
+    reached = (np.linalg.norm(tip - t, axis=1) < REACH_TOL) | ~active
+    new_rot3 = rot3.copy()
+    new_rot3[:, 0] = kin.local_rotation_update(_frames_rot(new_limb, wn, 0), d1, rot3[:, 0])
+    new_rot3[:, 1] = kin.local_rotation_update(_frames_rot(new_limb, wn, 1), d2, rot3[:, 1])
+    if k == 3:      # the last bone (foot) keeps its old world orientation
+        w2 = new_limb.world(new_rot3)
+        frame = _frames_rot(new_limb, w2, 2)
+        new_rot3[:, 2] = kin.orthonormalize(np.linalg.inv(frame) @ kin.orthonormalize(wo[:, 2, :3, :3]))
+    locks = limb.lock_rotation
+    return [_native(new_rot3[:, i], np.asarray(limb.rot[i], dtype=np.float64), limb.modes[i],
+                    None if locks is None else np.asarray(locks)[i], active) for i in range(k)], reached
 
 
 def _apply_locks(new, old, mode, locks):
@@ -145,9 +223,10 @@ def _apply_locks(new, old, mode, locks):
     return out
 
 
-def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None) -> Result:
-    """Run the ephemeral gesture. ``weights`` (N,) in [0, 1]; ``delta`` (3,) world drag."""
-    reason = check(chain)
+def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solver=AUTO, pins=()) -> Result:
+    """Run the ephemeral gesture. ``weights`` (N,) in [0, 1]; ``delta`` (3,) world drag; ``solver`` AUTO
+    (by chain length) or DLS; ``pins``: FK limbs whose end stays put (``Pin``)."""
+    reason = check(chain) or next((check(p.limb) for p in pins if check(p.limb)), "")
     if reason:
         raise ValueError(reason)
     weights = np.asarray(weights, dtype=np.float64)
@@ -157,7 +236,7 @@ def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None) -> R
     tip0 = kin.tails(world[:, -1], chain.lengths[-1])
     target = tip0 + weights[:, None] * delta[None, :]
     active = weights > 0.0
-    deltas = _own_deltas(chain, world, target, orientation, bend_axis)
+    deltas = _own_deltas(chain, world, target, orientation, bend_axis, solver)
 
     new_rot = []
     new_rot3 = rot3.copy()
@@ -165,18 +244,17 @@ def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None) -> R
         old = np.asarray(old, dtype=np.float64)
         frame = _frames_rot(chain, world, i)
         r = kin.local_rotation_update(frame, deltas[:, i], rot3[:, i])
-        if mode == "QUATERNION":
-            q = kin.mat3_to_quat(r)
-            q = np.where((np.sum(q * old, axis=1) < 0.0)[:, None], -q, q)   # same hemisphere as before
-            vals = q
-        else:
-            vals = kin.mat3_to_euler(r, mode, compatible=old)
         locks = None if chain.lock_rotation is None else np.asarray(chain.lock_rotation)[i]
-        vals = _apply_locks(vals, old, mode, locks)
-        vals = np.where(active[:, None], vals, old)                    # weight 0 ⇒ bit-identical
+        vals = _native(r, old, mode, locks, active)                    # weight 0 ⇒ bit-identical
         new_rot.append(vals)
         new_rot3[:, i] = kin.rotation_to_mat3(vals, mode)
-    tip = kin.tails(chain.world(new_rot3)[:, -1], chain.lengths[-1])
+    world_new = chain.world(new_rot3)
+    tip = kin.tails(world_new[:, -1], chain.lengths[-1])
     tip = np.where(active[:, None], tip, tip0)
     reached = np.linalg.norm(tip - target, axis=1) < REACH_TOL
-    return Result(rot=new_rot, tip=tip, target=target, reached=reached)
+    solved = [_solve_pin(p, world, world_new, active) for p in pins]
+    pins_reached = np.ones(len(weights), dtype=bool)
+    for _rot, ok in solved:
+        pins_reached &= ok
+    return Result(rot=new_rot, tip=tip, target=target, reached=reached, pins=[r for r, _ok in solved],
+                  pins_reached=pins_reached)
