@@ -45,6 +45,10 @@ Testes existentes:
 
 `scenario_settings.py` (4 checagens; asset local da Vale quando existe, senão rig público): o atalho **Shift+Alt+K** ativa a ferramenta Animation Sculptor (outra ferramenta ativa antes); o raio guardado em `Scene.asc_sculpt` comanda o soft grab (anéis de falloff nas keys vizinhas); a roda do mouse durante o gesto grava o novo raio na cena. O Breakdowner nativo **não** é verificado aqui: ele entra em modal, mas o slider dele ignora mouse simulado por `event_simulate` — fica no M1 (manual).
 
+`scenario_time_ui.py` (13 checagens; asset da Vale quando existe, senão rig público): ativar a ferramenta aplica a paleta (passado vermelho, futuro verde); a régua de tempo tem layout no viewport; hover na ponta direita escolhe o futuro; arrastar 10 frames muda só o raio do futuro; 1 Ctrl+Z desfaz e Ctrl+Shift+Z refaz; arrastar a ponta esquerda muda só o passado; Esc restaura; soft grab assimétrico (passado 3, futuro 10, frame 18) move as keys 16 e 26 e não 1/10/40; mouse move < 16 ms. Cuidados aprendidos: soltar `LEFT_SHIFT`/`LEFT_CTRL` com eventos explícitos depois de atalhos com modificador (o estado do modificador simulado persiste) e re-buscar dados de ID (`bpy.context.scene…`, objetos) depois de undo/redo (referências antigas derrubam o Blender).
+
+Testes de Blender da UI de tempo: `test_time_window.py` (soft grab assimétrico, raios ligados, `asc.time_window`, paleta, barra da ferramenta) e `test_settings_persistence.py::test_file_from_0_3_0_opens_with_both_radii_equal` (migração). Unit: `tests/unit/test_time_ruler.py`.
+
 `scenario_timing.py` (10 checagens, asset da Vale): Ctrl+LMB num key inicia um retime; a pose inteira (também outro controle) fica mais tarde; nenhuma key criada; um Ctrl+Z desfaz o retime; Ctrl+LMB num in-between inicia o spacing; o preview são pontos coloridos por velocidade; nenhuma key é criada nem movida; o in-between desliza pelo caminho antigo; Esc restaura o timing bit a bit e nenhum gesto fica rodando.
 
 ## Fixtures (`tests/blender/conftest.py`)

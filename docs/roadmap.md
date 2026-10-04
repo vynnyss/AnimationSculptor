@@ -11,7 +11,7 @@ flowchart LR
     MVP --> E5["Escopo 5<br/>Pós-MVP"]
 ```
 
-Ordem: o pipeline até o Godot (baixo risco técnico) vem cedo para fechar o ciclo de ponta a ponta antes do trabalho mais arriscado (FK/tangent-space).
+Ordem: o pipeline até o Godot (baixo risco técnico) vem cedo para fechar o ciclo de ponta a ponta antes do trabalho mais arriscado (FK/tangent-space). **Exceção decidida pelo mantenedor em 2026-10-04**: o FK pelo rig efêmero (fases 2–4 de [design/ephemeral-rig.md](design/ephemeral-rig.md), parte do Escopo 4) vem logo depois da UI de tempo, antes do Escopo 2.
 
 ---
 
@@ -51,7 +51,7 @@ Blender 5.2 → abrir personagem Rigify → keyar key poses (I, normal)
 
 ---
 
-## UI de tempo (entre o Escopo 1 e o 2)
+## UI de tempo (entre o Escopo 1 e o 2) — implementada (0.4.0, em revisão)
 
 Fase 1 do [rig efêmero](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-main-depois-do-merge-do-11), independente do solve: **régua de tempo no viewport** (janela do gesto com falloff assimétrico, passado em vermelho e futuro em verde, pontas arrastáveis; o soft grab passa a usá-la), **paleta passado/futuro** nas trails e no onion skin, e as configurações do gesto na **barra nativa da ferramenta** (`WorkSpaceTool.draw_settings`).
 

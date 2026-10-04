@@ -61,7 +61,7 @@ O Animation Sculptor já tem o princípio ("o único estado persistente é a Act
 ### Paleta passado/futuro
 
 - Convenção única: passado **vermelho**, futuro **verde**, frame atual branco. Aplicada às trails (`path_color_past/future` do LMP, que já existem — só mudar os padrões quando a nossa extensão liga as trails, sem patch), ao onion skin (`onion_color_before/after`) e à régua de tempo.
-- Botão "Paleta Animation Sculptor" no painel Trails para reaplicar; o usuário pode trocar as cores no LMP normalmente.
+- Botão "Paleta Animation Sculptor" (ícone de cor ao lado de "Cor da trail" no painel **Gestos** — não no painel Trails do LMP, para não exigir patch) para reaplicar; o usuário pode trocar as cores no LMP normalmente. Aplicação automática: **uma vez por cena** (`Scene.asc_sculpt.palette_applied`), quando a ferramenta liga as trails.
 
 ### Barra da ferramenta
 
@@ -94,10 +94,17 @@ Curva-guia com pontos de controle aplicada a um trecho de tempo (faixa roxa na r
 
 ## Fases (um PR cada, a partir da `main` depois do merge do #11)
 
-1. **UI de tempo** — régua de tempo no viewport com raio assimétrico (soft grab passa a usá-la), paleta passado/futuro, barra nativa da ferramenta. Independe do solve; melhora já o que existe. *Pronto quando:* soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua, salvos no arquivo; trails vermelho/verde.
+1. **UI de tempo** (**implementada** — PR `feat/time-ui`, 0.4.0; ver notas abaixo) — régua de tempo no viewport com raio assimétrico (soft grab passa a usá-la), paleta passado/futuro, barra nativa da ferramenta. Independe do solve; melhora já o que existe. *Pronto quando:* soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua, salvos no arquivo; trails vermelho/verde.
 2. **`core/kinematics` + `core/ephemeral` + `core/dense`** (puro, só testes). *Pronto quando:* FK em numpy bate com o Blender no rig público (< 1e-5 m, teste de Blender); IK de 2 bones atinge o alvo exato dentro do alcance e preserva o plano; escrita densa respeita a invariante de borda; quaternions sem flip.
 3. **Gesto efêmero `Membro`/`Ponta`** nos controles FK do Rigify e no adapter genérico, keys densas na janela, preview, undo/cancel, recusas. *Pronto quando:* swing de espada com braço FK esculpido no viewport (o critério que fechava o Escopo 4).
 4. **`Corpo` + pins + arrastar o bone direto** (ponta do bone no frame atual como alvo, sem precisar mirar na trail) + orientação `Local`/`Mundo`.
+
+### Notas da implementação da fase 1
+
+- Geometria da régua em `core/ruler.py` (pura, testada com pytest) e desenho/hit-test em `interaction/hud.py`. Escala: meia largura = `max(20, ⌈1,25·max(r)/5⌉·5)` frames, até 560 px; **congelada durante o arrasto** de uma ponta para a régua não mudar de escala sob o mouse.
+- O clique numa ponta chega ao gizmo (único, `ASC_GT_trail_points`), que entrega ao `asc.sculpt_gesture`; ele inicia o modal `asc.time_window` e termina sem passo de undo; o `asc.time_window` tem o seu (1 passo; Esc/RMB restaura).
+- Roda/`[ ]` no grab mudam os dois lados pelo mesmo passo (ligados continuam iguais; desligados mantêm a diferença).
+- `ephemeral_scope`/`tip_orientation` ficam para a fase 3 (sem efeito antes do gesto).
 
 ## Testes (viram critérios)
 

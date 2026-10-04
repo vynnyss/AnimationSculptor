@@ -9,7 +9,7 @@ operator (``target_set_operator``). Drawing of the hover ring lives in ``overlay
 import bpy
 
 from ..trails import provider
-from . import picking, state
+from . import hud, picking, state
 
 GESTURE_OPERATOR = "asc.sculpt_gesture"
 
@@ -44,14 +44,31 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
         self.use_draw_hover = False
 
     def test_select(self, context, location):
-        if state.GESTURE is not None:
+        if state.GESTURE is not None or state.RULER_DRAG is not None:
             return -1
+        # the time ruler comes first: its end handles sit over the viewport, maybe over a trail
+        try:
+            side = hud.hit(context, location)
+        except Exception as exc:
+            print(f"[Animation Sculptor] ruler picking failed: {exc}")
+            side = None
+        left_ruler = state.RULER_HOVER is not None and side is None
+        if side != state.RULER_HOVER:
+            state.RULER_HOVER = side
+            context.area.tag_redraw()
+        if side is not None:
+            if state.HOVER is not None:
+                state.HOVER = None
+            context.area.header_text_set(
+                f"Animation Sculptor · régua de tempo: raio do {'passado' if side == 'PAST' else 'futuro'}   "
+                "LMB arrastar: mudar · Shift: os dois lados")
+            return 0
         try:
             hit = picking.hit_test(context.region, context.region_data, location, candidate_keys(context))
         except Exception as exc:  # never break the viewport event loop
             print(f"[Animation Sculptor] picking failed: {exc}")
             hit = None
-        if hit != state.HOVER:
+        if hit != state.HOVER or left_ruler:
             state.HOVER = hit
             refusal = state.REFUSAL
             if refusal is not None and (hit is None or (hit.bone, hit.frame) != (refusal["bone"], refusal["frame"])):
@@ -97,6 +114,10 @@ class ASC_GGT_trails(bpy.types.GizmoGroup):
             scene = bpy.data.scenes.get(scene_name)
             if scene is not None:
                 provider.set_enabled(scene, True)
+                sculpt = getattr(scene, "asc_sculpt", None)
+                if sculpt is not None and not sculpt.palette_applied:   # once per scene: user colours win after
+                    provider.apply_palette(scene)
+                    sculpt.palette_applied = True
             return None
 
         bpy.app.timers.register(enable_trails, first_interval=0.0)

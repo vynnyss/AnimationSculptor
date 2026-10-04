@@ -30,3 +30,12 @@ def weight(distance, radius, shape="SMOOTH"):
     else:
         raise ValueError(f"unknown falloff shape {shape!r}")
     return np.where(d == 0.0, 1.0, w)
+
+
+def weight_signed(offset, radius_past, radius_future, shape="SMOOTH"):
+    """Asymmetric falloff: ``offset`` = frame − f₀ (signed). Negative offsets use ``radius_past``,
+    positive ones ``radius_future``; 1 at 0. A side with radius 0 only keeps the centre."""
+    o = np.asarray(offset, dtype=np.float64)
+    past = weight(o, radius_past, shape)
+    future = weight(o, radius_future, shape)
+    return np.where(o < 0.0, past, future)

@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — M1 pelo mantenedor e ADR do spacing
+## Agora — UI de tempo em revisão; M1 pelo mantenedor; rig efêmero a seguir
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -17,13 +17,19 @@
 
 8. **[mergeado — PR #9] Grab + soft grab; Arc drag; preview analítico; recusas com motivo**: `core/falloff`, `core/sculpt_ops.arc_drag` (exato, keys e timing intactos), soft grab (roda/`[ ]`, vizinhas nunca criadas), arc com `B` (quebrar tangente), anel de falloff e anel vermelho de recusa + motivo no header; **patch P8 do LMP** (native solver devolvia zeros para bones ocultos). *Resultado: critérios 4 e 5 do Escopo 1 cobertos por testes automatizados (unit 79, blender 82, ui 37).*
 
-9. **[em revisão — PR #10 `feat/retime-spacing`, a partir da `main`] Retime + spacing + cor de velocidade + ponto de referência por alvo** (primeira metade do item que completa o Escopo 1): `core/timing_ops` (retime da pose key em todo o escopo, spacing por `λ` com `PRESERVE_PATH`/`PRESERVE_SMOOTHNESS`), `interaction/timing_edit`, Ctrl+LMB num key = retime e num in-between = spacing (preview com pontos coloridos por velocidade), escopo `CHARACTER`/`SELECTED`; **patch P9 do LMP** (trail de FK segue o `TAIL`). *Resultado: critério 6 do Escopo 1 coberto por testes automatizados (unit 99, blender 91, ui 47).*
+9. **[mergeado — PR #10] Retime + spacing + cor de velocidade + ponto de referência por alvo** (primeira metade do item que completa o Escopo 1): `core/timing_ops` (retime da pose key em todo o escopo, spacing por `λ` com `PRESERVE_PATH`/`PRESERVE_SMOOTHNESS`), `interaction/timing_edit`, Ctrl+LMB num key = retime e num in-between = spacing (preview com pontos coloridos por velocidade), escopo `CHARACTER`/`SELECTED`; **patch P9 do LMP** (trail de FK segue o `TAIL`). *Resultado: critério 6 do Escopo 1 coberto por testes automatizados (unit 99, blender 91, ui 47).*
 
-10. **[em revisão — PR B `feat/panel-prefs-keymap`, empilhado sobre o PR #10]** Painel, preferências, keymap e persistência (segunda metade do item que completa o Escopo 1): `Scene.asc_sculpt` (raio, falloff, escopo, política de spacing, esconder no playback; substitui o `SETTINGS` de sessão; a roda grava o raio na cena), preferências por usuário (raio de clique, precisão, sensibilidade do spacing, px/frame do retime), painéis N › Animation Sculptor (principal, Gestos, Breakdown nativo, Estatísticas, Trails), atalho **Shift+Alt+K** editável, overlay escondido no playback, versão **0.3.0** (`dev.py build` → `dist/animation_sculptor-0.3.0.zip`). *Resultado: **implementação do Escopo 1 completa**; critério 8 (salvar/reabrir) coberto por teste e critério 1 (instalação em perfil limpo) verificado pelo agente (unit 99, blender 96, ui 51). Falta o mantenedor rodar M0/M1/M2.*
+10. **[mergeado — PR #11]** Painel, preferências, keymap e persistência (segunda metade do item que completa o Escopo 1): `Scene.asc_sculpt` (raio, falloff, escopo, política de spacing, esconder no playback; substitui o `SETTINGS` de sessão; a roda grava o raio na cena), preferências por usuário (raio de clique, precisão, sensibilidade do spacing, px/frame do retime), painéis N › Animation Sculptor (principal, Gestos, Breakdown nativo, Estatísticas, Trails), atalho **Shift+Alt+K** editável, overlay escondido no playback, versão **0.3.0** (`dev.py build` → `dist/animation_sculptor-0.3.0.zip`). *Resultado: **implementação do Escopo 1 completa**; critério 8 (salvar/reabrir) coberto por teste e critério 1 (instalação em perfil limpo) verificado pelo agente (unit 99, blender 96, ui 51). Falta o mantenedor rodar M0/M1/M2.*
 
-> Estado dos PRs: #7–#9 estão na `main`; o PR #10 (retime/spacing) está em revisão; esta branch (PR B) é empilhada sobre ele e só deve ser testada com o #10 aplicado (ou depois do merge dele).
+11. **[mergeado — PR #13] Plano do rig efêmero e da UI de tempo** (só docs): [design/ephemeral-rig.md](design/ephemeral-rig.md), [ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md).
 
-## Próximo — fechar o Escopo 1 e começar o Escopo 2
+12. **[em revisão — PR `feat/time-ui`, a partir da `main`] UI de tempo** (fase 1 do rig efêmero): `core/falloff.weight_signed` + `core/ruler`, `Scene.asc_sculpt.radius_past/radius_future/radius_linked/show_time_ruler` (migração do `soft_radius` de 0.3.0), régua de tempo no viewport (`interaction/hud.py`; pontas arrastáveis pelo modal `asc.time_window`, Shift = os dois lados), soft grab assimétrico, paleta passado vermelho/futuro verde (`provider.apply_palette`, uma vez por cena + botão), barra nativa da ferramenta (`draw_settings`); versão 0.4.0. *Resultado: soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua e salvos no arquivo; trails vermelho/verde (unit 360, blender 111, ui 68).*
+
+> Estado dos PRs: #1–#11 e #13 estão na `main`; a UI de tempo está em revisão.
+
+## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
+
+- **Rig efêmero, fase 2** ([design/ephemeral-rig.md](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-main-depois-do-merge-do-11)): `core/kinematics` (FK numpy, quaternion/Euler com continuidade, IK analítico de 2 bones, rotação mínima), `core/ephemeral`, `core/dense`; só testes (unit + FK numpy = depsgraph no rig público). Depois a **fase 3** (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico, keys densas, preview, undo/cancel) e a **fase 4** (`Corpo`, pins, arrastar o bone direto). Ordem decidida pelo mantenedor em 2026-10-04: logo depois da UI de tempo, antes do Escopo 2.
 
 - Asset **público** para o CI — **parcialmente atendido**: `tests/blender/public_rig.py` gera em tempo de teste um rig Rigify público (metarig Human → generate) com a Action `asc_public_test` (4 controles, frames 1/12/24) e os testes de trails já rodam no CI com ele. Falta: ataque completo (key poses próprias para as proporções do metarig) e mesh simples, se algum teste precisar.
 - ~~`core/bezier` + `core/fcurve_model` com paridade com `FCurve.evaluate`~~ — feito (PR `feat/core-bezier-action-io`): 300 curvas aleatórias × 801 tempos, erro máximo 0 (bit a bit).
@@ -41,12 +47,12 @@
 
 - Escopo 2: pipeline Godot (validação, bake opcional, preset glTF, root motion, teste headless) + **Loop parte 1** (marcar Action cíclica, "Fechar loop", export como loop) — pedido do mantenedor em 2026-10-03.
 - Escopo 3: smooth, make arc, pins, tangent handles, ranges, retime com stretch, **Loop parte 2** (trail fechada, edição propagada nas pontas).
-- **UI de tempo** (fase 1 do [rig efêmero](design/ephemeral-rig.md); primeiro PR depois do merge do #11, a partir da `main`): régua de tempo no viewport com raio assimétrico (soft grab), paleta passado vermelho/futuro verde, barra nativa da ferramenta. Pedido do mantenedor em 2026-10-04, inspirado na palestra *Motion Sculpting* (BCON26).
-- Escopo 4: FK pelo **rig efêmero** com keys densas ([ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md), proposto) — fases 2 (`core/kinematics`, `core/ephemeral`, `core/dense`), 3 (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico) e 4 (`Corpo`, pins, arrastar o bone direto); trails IK/FK, snapping Rigify.
+- ~~**UI de tempo**~~ — feito (item 12, em revisão). Era: (fase 1 do [rig efêmero](design/ephemeral-rig.md); primeiro PR depois do merge do #11, a partir da `main`): régua de tempo no viewport com raio assimétrico (soft grab), paleta passado vermelho/futuro verde, barra nativa da ferramenta. Pedido do mantenedor em 2026-10-04, inspirado na palestra *Motion Sculpting* (BCON26).
+- Escopo 4: FK pelo **rig efêmero** com keys densas ([ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md), aceito; puxado para antes do Escopo 2 — ver "Próximo") — fases 2 (`core/kinematics`, `core/ephemeral`, `core/dense`), 3 (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico) e 4 (`Corpo`, pins, arrastar o bone direto); trails IK/FK, snapping Rigify.
 
 ## Investigação
 
-- **Ordem do rig efêmero no roadmap**: hoje ele é o Escopo 4 (substitui o Tangent-Space). Puxar as fases 2–3 para antes do Escopo 2 (pipeline Godot)? Decisão do mantenedor.
+- ~~**Ordem do rig efêmero no roadmap**~~ — decidido pelo mantenedor em 2026-10-04: rig efêmero logo depois da UI de tempo, antes do Escopo 2.
 - Custo do preview do gesto efêmero (N frames × IK por mouse move; meta < 16 ms para 200 frames) — medir na fase 2.
 - "Simplificar" regiões densas: `graph.decimate` via `temp_override` ou port do algoritmo.
 
