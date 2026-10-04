@@ -466,6 +466,10 @@ class RotateEdit(ChainEdit):
 
     def apply_rotation(self, angle, twist=False):
         self.angle, self.twist = float(angle), bool(twist)
+        if self.angle == 0.0:                     # no turn: the Action stays bit-identical (no dense keys)
+            self.result = None
+            self.restore()
+            return
         axis = self.chain.world()[:, -1, :3, 1] if self.twist else self.view_axis
         self.result = ephemeral.rotate(self.chain, self.weights, axis, self.angle)
         self._write()

@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — reforma de UX em revisão (um PR)
+## Agora — esqueleto primeiro + Girar em revisão (um PR)
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -32,9 +32,11 @@
 15. **[mergeado — PR #17] Rig efêmero, fase 4** (0.6.0): escopo `Corpo` (DLS na coluna, pernas FK presas), arrastar a ponta do bone direto, validação de rigidez (`anim/spaces.chain_rigidity`), clique sem arrasto não escreve nada. *Resultado: inclinar o corpo pela cabeça (genérico) ou pelo `chest` (Rigify) com os pés parados; coluna do Rigify acima do `chest` recusada com motivo (não rígida).*
 
 16. **[mergeado — PR #18] Plano da reforma de UX** (só docs): [ADR 0013](decisions/0013-body-and-trail-interaction.md), [ADR 0012](decisions/0012-spacing-policy-preserve-path.md), [design/sculpt-ux.md](design/sculpt-ux.md).
-17. **[em revisão — PR `feat/ux-reform`, um PR só por pedido do mantenedor] Reforma de UX (0.7.0)**: UX-1 a UX-4 do plano — ferramentas na lateral, modos Corpo/Trail, agarrar o corpo (pele segue o cursor), pescoço/cabeça em duas etapas, Smooth, régua v2, onion normal/expandido, painel N limpo, Ligar Rigify; testes conferem a deformação da malha. *Resultado: unit 583, blender 186, ui 140.*
+17. **[mergeado — PR #19, um PR só por pedido do mantenedor] Reforma de UX (0.7.0)**: UX-1 a UX-4 do plano — ferramentas na lateral, modos Corpo/Trail, agarrar o corpo (pele segue o cursor), pescoço/cabeça em duas etapas, Smooth, régua v2, onion normal/expandido, painel N limpo, Ligar Rigify; testes conferem a deformação da malha. *Resultado: unit 583, blender 186, ui 140.*
 
-> Estado dos PRs: #1–#11 e #13–#18 estão na `main`; a reforma de UX está em revisão.
+18. **[em revisão — PR `feat/skeleton-sculpt`, um PR] Esqueleto primeiro + Girar (0.8.0)**, [ADR 0014](decisions/0014-skeleton-first.md): esqueleto simples com dedos para a malha da Vale (`dev.py basic-rig` → `Vale_new_Basic_rigged.blend`), gesto Girar (ferramenta + segurar R), trails agarráveis no modo Corpo, onion expandido por personagem. *Resultado: unit 586, blender 199, ui 169.*
+
+> Estado dos PRs: #1–#11 e #13–#19 estão na `main`; esqueleto primeiro + Girar em revisão.
 
 ## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
 
@@ -53,6 +55,9 @@
 - **ADR da política de spacing** (`PRESERVE_PATH` × `PRESERVE_SMOOTHNESS`) depois do M1 (passo 16); depois disso, Escopo 2.
 
 ## Depois
+
+- Escolher entre a ferramenta Girar e segurar R (mantenedor compara usando a 0.8.0).
+- Rigify congelado (ADR 0014): IK/FK, snapping e bake voltam só se o mantenedor pedir.
 
 - Reinstalar o zip automaticamente para os testes do mantenedor (pedido de 2026-10-04, futuro).
 

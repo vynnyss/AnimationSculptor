@@ -27,6 +27,15 @@ O arquivo original **só é lido** (`save_as_mainfile(copy=True)` para outro cam
 | `tests/assets/simple_rig.blend` | Armature de 3 bones + objeto animado simples, sem Rigify | planejado | adapter genérico, paridade |
 | `tests/assets/edge_cases.blend` | Canais com driver, NLA ativa, modificador de F-Curve, segmento LINEAR, eixo travado | planejado | recusas |
 
+## Esqueleto simples (`dev.py basic-rig`, [ADR 0014](../decisions/0014-skeleton-first.md))
+
+`python scripts/dev.py basic-rig [--source arquivo_mesh.blend] [--output arquivo_rigged.blend]` roda `scripts/make_basic_rig.py` num Blender de fundo: lê a malha sem rig (padrão: `basic_character` em `scripts/.dev.toml` ou `ASC_BASIC_CHARACTER`), cria o esqueleto simples (53 bones com dedos; juntas encaixadas no centro da seção da malha), liga as malhas com pesos automáticos (vértices sem peso vão para o bone mais próximo) e grava:
+
+- `--output` (padrão: o nome do original sem `_mesh` + `_rigged.blend`, ex. `D:\Projetos\Vale_new_Basic_rigged.blend`) — o arquivo para animar; **nunca** o próprio original (recusado);
+- `tests/assets/local/basic_rig_test.blend` (gitignored) — a mesma cena com a Action `asc_test_basic` (frames 1/12/24: braço e antebraço direitos, coluna, cabeça, coxa esquerda, indicador, `hips`), usada pela fixture `basic_rig` e pelos cenários de UI `scenario_rotate.py`.
+
+O original só é lido (mesmo tamanho e data depois de rodar).
+
 ## Animação `asc_test_attack`
 
 Ataque com espada (mão direita), 24 fps, frames 1–40, markers na timeline:

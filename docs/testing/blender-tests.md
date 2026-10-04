@@ -67,8 +67,10 @@ Existentes:
 - `public_rig` — abre uma cópia nova do rig gerado e devolve o objeto.
 - `attack_rig` — abre o asset local de ataque (Vale); pula se não existir.
 
+- `simple_rig` — o esqueleto simples da [ADR 0014](../decisions/0014-skeleton-first.md) (mesma tabela de bones de `scripts/make_basic_rig.py`, sem o encaixe na malha) num corpo de teste com pesos (`body_mesh.py`) e a Action pequena `asc_test_basic`; roda no CI.
+- `basic_rig` — a Vale no esqueleto simples (`tests/assets/local/basic_rig_test.blend`, gerado por `python scripts/dev.py basic-rig`); pula se não existir.
+
 Planejadas:
-- `simple_rig` — armature de 3 bones sem Rigify (adapter genérico). Hoje o teste do genérico monta o armature dentro do próprio teste.
 - `force_step_engine` — configura o engine do LMP em `STEP` (native solver exige janela).
 
 ## Casos por tema

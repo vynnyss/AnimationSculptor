@@ -239,8 +239,6 @@ def test_rotate_twist_turns_about_the_bone_axis(simple_rig, addon):
     assert _moved(after, before, groups["upper_arm.R"]) < TOL_STILL
 
 
-@pytest.mark.xfail(strict=True, reason="addon: apply_rotation(0) still rewrites the window as dense keys (and "
-                   "flips the handles of the boundary keys to ALIGNED), so the Action is not bit-identical")
 def test_rotate_angle_zero_leaves_the_action_bit_identical(simple_rig, addon):
     rig = simple_rig
     dump = _dump(rig)

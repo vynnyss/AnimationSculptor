@@ -1,6 +1,6 @@
 # 0002 — Rigify primeiro, por trás de um Rig Adapter
 
-- Status: aceito
+- Status: aceito; **substituído em parte por [0014](0014-skeleton-first.md)** (2026-10-04: o fluxo principal passa a ser o esqueleto simples; o Rigify continua como adapter secundário)
 - Data: 2026-10-03
 
 ## Contexto e problema
