@@ -62,7 +62,7 @@ class ChainEdit:
 
     def __init__(self, ob, bones, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH",
                  orientation=ephemeral.WORLD, scope="LIMB", pins=(), point_world=None, point_bone=None,
-                 aim_bones=()):
+                 aim_bones=(), point_deform=None, point_skin=None):
         """``point_world``: the grabbed spot on the body (world, at ``frame``), rigid with ``point_bone``
         (default: the chain's last bone); None = the last bone's tail. ``aim_bones`` (decision 10, e.g. Rigify
         ``neck, head``): the chain only leans; ``finish`` then measures the rig and (1) leans further until the
@@ -89,6 +89,25 @@ class ChainEdit:
         if scene.frame_current != self.frame:
             scene.frame_set(self.frame)
         self.point_bone = point_bone or self.bone
+        # the grabbed spot as the skin carries it: on its deform bone (Rigify's DEF-spine.00N follows the chest
+        # control only partly); measured on the rig on release and corrected (finish)
+        self.point_deform = point_deform if point_deform and point_deform in ob.pose.bones else None
+        self.deform_local = None
+        if point_world is not None and self.point_deform:
+            md = np.asarray(ob.matrix_world @ ob.pose.bones[self.point_deform].matrix, dtype=np.float64)
+            self.deform_local = (np.linalg.inv(md) @ np.r_[np.asarray(point_world, dtype=np.float64), 1.0])[:3]
+        # better: the skin itself (vertices of the hit face, inverse-distance weights + a constant offset),
+        # since a skin vertex blends several deform bones
+        self.skin = None
+        if point_world is not None and point_skin:
+            from . import body_pick
+
+            mesh, face = point_skin
+            pts = body_pick.skin_points(mesh, face)
+            hit = np.asarray(point_world, dtype=np.float64)
+            w = 1.0 / (np.linalg.norm(pts - hit, axis=1) + 1e-6)
+            w = w / w.sum()
+            self.skin = (mesh, tuple(face), w, hit - w @ pts)
         self.aim_bones = [b for b in aim_bones if b not in self.bones]
         self.aim_bone = self.aim_bones[-1] if self.aim_bones else None
         self.point_local = None             # grabbed point in point_bone's local space (constant)
@@ -247,8 +266,9 @@ class ChainEdit:
         return [tuple(p) for p in pts]
 
     def finish(self):
-        """Stages after the chain (decision 10), measured on the rig as it is after each step (frame stepping
-        over the window, fixed number of steps). No-op without aimed bones."""
+        """Steps after the chain, measured on the rig as it is after each step (frame stepping over the window,
+        fixed number of steps): the skin's spot follow-up, then the aim stages (decision 10)."""
+        self._follow_skin()
         if not self.aim_bones or self.result is None or self.aim_origin is None:
             return
         active = self.weights > 0.0
@@ -275,6 +295,55 @@ class ChainEdit:
             self._aim(first, b_local, b_goal, active)
         # (3) aim the last so the grabbed spot reaches its target
         self._aim(last, np.broadcast_to(self.point_local, (len(self.frames), 3)), goal, active)
+
+    def _follow_skin(self):
+        """The grabbed spot is on a deform bone that may not be rigid with the chain (Rigify's spine tweaks):
+        re-solve the chain with the target moved by the error measured on the skin (fixed-point steps)."""
+        if self.result is None or self.aim_bones:
+            return
+        if self.skin is None and (self.deform_local is None or self.point_deform == self.point_bone):
+            return
+        active = self.weights > 0.0
+        p = np.r_[self.deform_local, 1.0] if self.deform_local is not None else None
+        goal = self.result.target.copy()
+        target = goal.copy()
+        gain = np.ones(len(self.frames))      # how much the spot moves per unit of target move (per frame)
+        last_spots = last_target = None
+        for _ in range(PIVOT_ITERATIONS + 1):
+            if self.skin is not None:
+                spots = self._measure_skin()
+            else:
+                spots = np.einsum("nij,j->ni", self._measure([self.point_deform])[self.point_deform], p)[:, :3]
+            err = np.where(active[:, None], goal - spots, 0.0)
+            if np.abs(err).max() < 5e-5:
+                break
+            if last_spots is not None:      # scalar secant per frame, clamped (deterministic)
+                dt = target - last_target
+                ds = spots - last_spots
+                den = np.sum(dt * dt, axis=1)
+                est = np.where(den > 1e-12, np.sum(ds * dt, axis=1) / np.maximum(den, 1e-12), gain)
+                gain = np.clip(est, 0.2, 2.0)
+            last_spots, last_target = spots, target.copy()
+            target = target + err / gain[:, None]
+            self.apply(self.delta, target=target)
+        self.result.target = goal
+
+    def _measure_skin(self):
+        """The grabbed skin spot per window frame, on the deformed mesh (frame stepping)."""
+        from . import body_pick
+
+        mesh, face, w, offset = self.skin
+        scene = bpy.context.scene
+        out = np.empty((len(self.frames), 3))
+        current, sub = scene.frame_current, scene.frame_subframe
+        with spaces.preserve_pose(self.ob):
+            try:
+                for j, f in enumerate(self.frames):
+                    scene.frame_set(int(f))
+                    out[j] = w @ body_pick.skin_points(mesh, face) + offset
+            finally:
+                scene.frame_set(current, subframe=sub)
+        return out
 
     def _measure(self, bones):
         """{bone: (N, 4, 4) world matrix per window frame}, evaluated on the rig (frame stepping)."""

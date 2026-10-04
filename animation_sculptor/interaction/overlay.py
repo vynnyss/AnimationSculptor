@@ -82,8 +82,21 @@ def _draw_ring(shader, co, radius, color, width):
     batch.draw(shader)
 
 
+def _remember_tool(context):
+    """Shift+Alt+K brings back the last Animation Sculptor tool that was active (gesture or not)."""
+    from .sculpt_tool import TOOL_IDS, active_tool_id
+
+    tool = active_tool_id(context)
+    if tool in TOOL_IDS:
+        state.LAST_TOOL = tool
+
+
 def draw_pixel():
     context = bpy.context
+    try:
+        _remember_tool(context)
+    except Exception:
+        pass
     settings = getattr(context.scene, "asc_sculpt", None)
     screen = context.screen
     if settings is not None and settings.hide_on_playback and screen is not None and screen.is_animation_playing:

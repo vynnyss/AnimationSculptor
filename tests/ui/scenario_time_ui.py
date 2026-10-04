@@ -68,6 +68,9 @@ def scenario(h):
     s.radius_past = s.radius_future = 0.0
     with h.override():
         bpy.ops.wm.tool_set_by_id(name="animation_sculptor.sculpt")
+        # settings written from Python have no undo step: push one so Ctrl+Z comes back to this state, not to
+        # the values saved in the file
+        bpy.ops.ed.undo_push(message="scenario setup")
     yield 0.5
     yield from _wait(lambda: (t := provider.get_trail(rig, bone)) is not None and t.complete)
 

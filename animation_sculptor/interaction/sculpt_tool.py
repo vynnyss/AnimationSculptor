@@ -370,7 +370,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         self.edit = ephemeral_edit.ChainEdit(ob, bones, frame, radii[0], radii[1],
                                              settings.falloff if settings is not None else "SMOOTH", orientation,
                                              scope=scope, pins=pins, point_world=point,
-                                             point_bone=bone if point is not None else None, aim_bones=aim)
+                                             point_bone=bone if point is not None else None, aim_bones=aim,
+                                             point_deform=getattr(self, "_deform", None),
+                                             point_skin=getattr(self, "_skin", None))
         state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
         if self.edit.reason:
             return self.edit.reason
@@ -444,6 +446,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         mode = 'GRAB' if hit.is_key else 'ARC'
         self.from_bone = bool(getattr(hit, "on_bone", False))
         self._point = None
+        self._deform = None
+        self._skin = None
         if self.from_bone:
             mode = 'CHAIN'
         if hit.on_body:
@@ -453,6 +457,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                 mode = 'GRAB' if hit.is_key else 'ARC'
             else:
                 mode, self._point = 'CHAIN', Vector(hit.world)
+            self._deform = hit.deform
+            self._skin = (hit.mesh, hit.face) if hit.face else None
         reason = self._begin(context, hit.obj_name, hit.bone, hit.frame, mode, radii)
         if reason:
             return self._refuse(context, hit, reason)
@@ -814,15 +820,12 @@ class ASC_OT_time_window(bpy.types.Operator):
     def modal(self, context, event):
         settings = _settings()
         if event.type == 'MOUSEMOVE':
-            lay = hud.current_layout(context)
-            if lay is not None:
-                self.radius = ruler.radius_from_x(lay, self.side, event.mouse_region_x)
-                self._set(settings, self.radius, event.shift or self.shift)
-                self._header(context)
-                context.area.tag_redraw()
+            self._follow(context, event, settings)
             return {'RUNNING_MODAL'}
         if event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'RELEASE' or (
                 event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS'):
+            if event.type == 'LEFTMOUSE':
+                self._follow(context, event, settings)    # the release position counts (moves may coalesce)
             self._end(context)
             return {'FINISHED'}
         if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
@@ -833,6 +836,14 @@ class ASC_OT_time_window(bpy.types.Operator):
             self._end(context)
             return {'CANCELLED'}
         return {'RUNNING_MODAL'}
+
+    def _follow(self, context, event, settings):
+        lay = hud.current_layout(context)
+        if lay is not None:
+            self.radius = ruler.radius_from_x(lay, self.side, event.mouse_region_x)
+            self._set(settings, self.radius, event.shift or self.shift)
+            self._header(context)
+            context.area.tag_redraw()
 
     def _end(self, context):
         state.RULER_DRAG = None

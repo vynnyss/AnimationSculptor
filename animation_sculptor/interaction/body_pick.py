@@ -25,6 +25,7 @@ class BodyHit:
     mesh: str           # object hit
     deform: str         # deform bone under the cursor
     world: tuple        # hit point on the surface (world)
+    face: tuple = ()    # vertex indices of the hit face (evaluated mesh = mesh topology), () otherwise
 
 
 def clear_cache():
@@ -98,10 +99,27 @@ def pick(context, region, rv3d, mouse, arm_ob) -> BodyHit | None:
     ob = hit_ob.original if hasattr(hit_ob, "original") else hit_ob
     if not _deformed_by(ob, arm_ob):
         return None
-    deform = bone_at(ob, ob.evaluated_get(depsgraph), arm_ob, index, location)
+    ob_eval = ob.evaluated_get(depsgraph)
+    deform = bone_at(ob, ob_eval, arm_ob, index, location)
     if deform is None:
         return None
-    return BodyHit(mesh=ob.name, deform=deform, world=tuple(location))
+    face = ()
+    emesh = ob_eval.data
+    if len(emesh.vertices) == len(ob.data.vertices) and 0 <= index < len(emesh.polygons):
+        face = tuple(emesh.polygons[index].vertices)
+    return BodyHit(mesh=ob.name, deform=deform, world=tuple(location), face=face)
+
+
+def skin_points(mesh_name, indices):
+    """World positions (len(indices), 3) of mesh vertices on the evaluated (deformed) mesh, current frame."""
+    import bpy
+
+    ob = bpy.data.objects[mesh_name]
+    ob_eval = ob.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    verts = ob_eval.data.vertices
+    mw = np.asarray(ob_eval.matrix_world, dtype=np.float64)
+    co = np.array([tuple(verts[i].co) for i in indices], dtype=np.float64)
+    return co @ mw[:3, :3].T + mw[:3, 3]
 
 
 # -- highlight -------------------------------------------------------------------------------------

@@ -46,7 +46,7 @@ def body_hit(context, location):
     return picking.Hit(obj_name=ob.name, bone=control or spot.deform, frame=frame,
                        is_key=bool(pb is not None and action_io.bone_has_key(ob, pb, frame)), world=spot.world,
                        screen=(float(location[0]), float(location[1])), distance=0.0, on_body=True,
-                       deform=spot.deform, kind=kind or "", mesh=spot.mesh, reason=reason)
+                       deform=spot.deform, kind=kind or "", mesh=spot.mesh, reason=reason, face=spot.face)
 
 
 def draggable_bones(context):

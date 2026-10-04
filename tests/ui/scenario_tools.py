@@ -102,7 +102,7 @@ def scenario(h):
     h.check("the IK feet stay put", moved < 1e-5, f"{moved:.2e} m")
     px = body_ui.vertex_window_px(h, picking, mesh_name, vi, f0)
     err = (px - Vector(end)).length if px is not None else 1e9
-    h.check("the grabbed chest vertex ends near the cursor", err < 10.0, f"{err:.2f} px")
+    h.check("the grabbed chest vertex ends near the cursor", err < 1.5, f"{err:.2f} px")
     h.screenshot("3-after-lean")
     yield from body_ui.undo(h, end)
     rig = bpy.data.objects[rig_name]

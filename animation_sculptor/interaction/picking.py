@@ -34,6 +34,7 @@ class Hit:
     kind: str = ""        # rig.CHAIN (ephemeral rig) / rig.IK (grab/arc of an IK control) (on_body)
     mesh: str = ""        # mesh object hit (on_body)
     reason: str = ""      # why the spot cannot be sculpted ('' when it can)
+    face: tuple = ()      # vertex indices of the hit face (on_body; the skin spot is tracked on them)
 
 
 def project_points(region, rv3d, points: np.ndarray) -> np.ndarray:
