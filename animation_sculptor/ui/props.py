@@ -33,6 +33,50 @@ def _sync_linked(source, target):
     return update
 
 
+def _provider():
+    from ..trails import provider
+
+    return provider
+
+
+def _sync_onion(self, context):
+    """Onion skin follows the toggles and covers the time ruler's window (design/sculpt-ux.md)."""
+    provider = _provider()
+    scene = context.scene if context is not None else None
+    if scene is None:
+        return
+    if hasattr(provider, "set_onion"):
+        provider.set_onion(scene, self.onion_show)
+    if self.onion_show and hasattr(provider, "sync_onion_window"):
+        provider.sync_onion_window(scene, self.radius_past, self.radius_future)
+    if hasattr(provider, "set_onion_spread"):
+        provider.set_onion_spread(self.onion_show and self.onion_spread)
+
+
+def _upd_radius(source, target):
+    linked = _sync_linked(source, target)
+
+    def update(self, context):
+        linked(self, context)
+        if self.onion_show:
+            _sync_onion(self, context)
+    return update
+
+
+def _upd_show_rig(self, context):
+    """Show/hide the bones (and the Rigify control shapes) in every 3D viewport: grab the body with the rig
+    out of the way; the animation keeps going to the controls (ADR 0013)."""
+    wm = getattr(context, "window_manager", None)
+    if wm is None:
+        return
+    for window in wm.windows:
+        for area in window.screen.areas:
+            if area.type == 'VIEW_3D':
+                overlay = getattr(area.spaces.active, "overlay", None)
+                if overlay is not None and overlay.show_bones != self.show_rig:
+                    overlay.show_bones = self.show_rig
+
+
 def _upd_linked(self, _context):
     if self.radius_linked and self.radius_future != self.radius_past:
         self.radius_future = self.radius_past
@@ -48,13 +92,13 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         name="Passado",
         description="Raio do soft grab para trás do frame arrastado, em frames (0 = nenhuma key anterior). "
                     "Arraste a ponta vermelha da régua, ou roda do mouse / [ ] durante o arrasto",
-        default=0.0, min=0.0, max=500.0, step=100, precision=0, update=_sync_linked("radius_past", "radius_future"),
+        default=0.0, min=0.0, max=500.0, step=100, precision=0, update=_upd_radius("radius_past", "radius_future"),
     )
     radius_future: FloatProperty(
         name="Futuro",
         description="Raio do soft grab para frente do frame arrastado, em frames (0 = nenhuma key seguinte). "
                     "Arraste a ponta verde da régua, ou roda do mouse / [ ] durante o arrasto",
-        default=0.0, min=0.0, max=500.0, step=100, precision=0, update=_sync_linked("radius_future", "radius_past"),
+        default=0.0, min=0.0, max=500.0, step=100, precision=0, update=_upd_radius("radius_future", "radius_past"),
     )
     radius_linked: BoolProperty(
         name="Ligar raios",
@@ -65,6 +109,35 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         name="Régua de tempo",
         description="Mostrar a régua de tempo (janela do soft grab) embaixo do viewport com a ferramenta ativa",
         default=True,
+    )
+    interaction_mode: EnumProperty(
+        name="Modo",
+        items=(('BODY', "Corpo", "Agarre o corpo do personagem: pose e arco no frame atual"),
+               ('TRAIL', "Trail", "Agarre a trajetória: timing e spacing (Ctrl+arrastar), como nas trails")),
+        default='BODY',
+    )
+    show_rig: BoolProperty(
+        name="Ligar Rigify",
+        description="Mostrar os bones/controles do rig no viewport. Desligado, o corpo é agarrado pela malha "
+                    "e a animação continua sendo gravada nos controles",
+        default=True, update=_upd_show_rig,
+    )
+    onion_show: BoolProperty(
+        name="Onion skin", description="Fantasmas da pose nos frames da janela da régua (passado vermelho, futuro verde)",
+        default=False, update=_sync_onion,
+    )
+    onion_spread: BoolProperty(
+        name="Onion expandida",
+        description="Espalha os fantasmas para os lados da tela (passado à esquerda, futuro à direita)",
+        default=False, update=_sync_onion,
+    )
+    smooth_strength: FloatProperty(
+        name="Força do Smooth", description="Quanto cada passe do pincel Smooth aproxima a curva da média",
+        default=0.5, min=0.0, max=1.0, subtype='FACTOR',
+    )
+    smooth_sigma: FloatProperty(
+        name="Largura do Smooth", description="Desvio padrão do filtro gaussiano, em frames",
+        default=1.5, min=0.25, max=10.0,
     )
     ephemeral_scope: EnumProperty(
         name="Escopo FK",

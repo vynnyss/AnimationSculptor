@@ -394,3 +394,12 @@ def test_key_marks_classify_dedupe_and_clip():
     marks = ruler.key_marks([10, 10.2, 5, 20, 100, 14, -50], 10.0, 0.0, 30.0)
     assert marks == [(5, PAST), (10, "CURRENT"), (14, FUTURE), (20, FUTURE)]
     assert ruler.key_marks([], 1.0, 0.0, 10.0) == []
+
+
+def test_wide_ruler_shows_more_frames():
+    from animation_sculptor.core import ruler as r
+    w = r.ruler_width(2000.0, 1.0)
+    hs = r.half_span_for_width(0.0, 0.0, w, 1.0)
+    assert hs % 5 == 0 and hs >= r.MIN_HALF_SPAN
+    assert w / (2.0 * hs) <= r.TARGET_PX_PER_FRAME + 1e-9
+    assert r.half_span_for_width(200.0, 0.0, w, 1.0) >= r.half_span_for(200.0, 0.0)

@@ -27,6 +27,20 @@ NICE_STEPS = (1, 2, 5, 10, 20, 50, 100, 200, 500)
 PAST, FUTURE = "PAST", "FUTURE"
 
 
+TARGET_PX_PER_FRAME = 12.0  # density the ruler aims for when the window is small (wide ruler shows more frames)
+
+
+def half_span_for_width(radius_past: float, radius_future: float, width_px: float, px: float = 1.0) -> int:
+    """``half_span_for`` widened so a wide ruler shows about TARGET_PX_PER_FRAME px per frame (multiple of 5)."""
+    fill = int(math.ceil(width_px / (2.0 * TARGET_PX_PER_FRAME * px) / 5.0)) * 5
+    return max(half_span_for(radius_past, radius_future), fill)
+
+
+def ruler_width(region_width: float, px: float) -> float:
+    """Ruler width for a region (the same rule ``layout`` uses)."""
+    return min(float(region_width) - 2.0 * SIDE_MARGIN_PX * px, MAX_WIDTH_PX * px)
+
+
 def half_span_for(radius_past: float, radius_future: float) -> int:
     """Frames shown on each side of f₀: the window plus 25 %, rounded up to 5, at least MIN_HALF_SPAN.
 

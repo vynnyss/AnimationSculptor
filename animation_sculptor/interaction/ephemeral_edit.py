@@ -17,6 +17,7 @@ import numpy as np
 from ..anim import action_io, spaces
 from ..anim.snapshot import Snapshot
 from ..core import dense, ephemeral, falloff
+from ..core import kinematics as kin
 from ..core.fcurve_model import ChannelModel
 
 PAD = 1     # frames of weight 0 written on each side of the window (curves created by the gesture stay flat outside)
@@ -59,7 +60,11 @@ class ChainEdit:
     kind = "CHAIN"
 
     def __init__(self, ob, bones, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH",
-                 orientation=ephemeral.WORLD, scope="LIMB", pins=()):
+                 orientation=ephemeral.WORLD, scope="LIMB", pins=(), point_world=None, point_bone=None,
+                 aim_bone=None):
+        """``point_world``: the grabbed spot on the body (world, at ``frame``), rigid with ``point_bone``
+        (default: the chain's last bone); None = the last bone's tail. ``aim_bone``: turned towards the target
+        after the chain (two stages, applied by ``finish``)."""
         self.ob = ob
         self.bones = list(bones)
         self.bone = self.bones[-1]
@@ -80,6 +85,13 @@ class ChainEdit:
         scene = bpy.context.scene
         if scene.frame_current != self.frame:
             scene.frame_set(self.frame)
+        self.point_bone = point_bone or self.bone
+        self.aim_bone = aim_bone if aim_bone and aim_bone not in self.bones else None
+        self.point_local = None             # grabbed point in point_bone's local space (constant)
+        if point_world is not None:
+            pb = ob.pose.bones[self.point_bone]
+            m = np.asarray(ob.matrix_world @ pb.matrix, dtype=np.float64)
+            self.point_local = (np.linalg.inv(m) @ np.r_[np.asarray(point_world, dtype=np.float64), 1.0])[:3]
         # pinned limbs: (index of the chain bone they hang from, limb bones)
         self.pins = []
         for hint, limb in pins:
@@ -89,6 +101,11 @@ class ChainEdit:
         self.reason = refusal(ob, [b for _j, limb in self.pins for b in limb]) or spaces.chain_rigidity(
             ob, self.bones, [(self.bones[j], limb[0]) for j, limb in self.pins])
         self.edited = self.bones + [b for _j, limb in self.pins for b in limb]
+        self.aim_channels = []      # rotation channels of aim_bone (written by finish)
+        if self.aim_bone:
+            pb = ob.pose.bones[self.aim_bone]
+            channel, size = spaces.rotation_channel(pb)
+            self.aim_channels = [(self.aim_bone, channel, axis) for axis in range(size)]
         self.channels = []          # (bone name, channel, axis)
         self.snapshot = Snapshot(ob)
         for name in self.edited:
@@ -97,6 +114,8 @@ class ChainEdit:
             for axis in range(size):
                 self.snapshot.capture(pb.path_from_id(channel), axis)
                 self.channels.append((name, channel, axis))
+        for name, channel, axis in self.aim_channels:
+            self.snapshot.capture(ob.pose.bones[name].path_from_id(channel), axis)
         if not self.reason:
             self._prepare()
 
@@ -119,8 +138,17 @@ class ChainEdit:
         """Sample the chain (and pinned limbs) over the window from the *original* Action; keep the models."""
         scene = bpy.context.scene
         self.frames = self.window_frames()
-        self.chain = self._chain(spaces.prefetch_chain(self.ob, self.bones, self.frames, scene))
+        extra = [self.point_bone] if self.point_local is not None and self.point_bone != self.bone else []
+        data = spaces.prefetch_chain(self.ob, self.bones, self.frames, scene, extra=extra)
+        self.chain = self._chain(data)
         world = self.chain.world()
+        if self.point_local is not None:
+            p = np.r_[self.point_local, 1.0]
+            if extra:   # the point belongs to a bone outside the chain: re-expressed in the last bone per frame
+                pts = np.einsum("nij,j->ni", data["extra"][self.point_bone], p)
+                self.chain.point = np.einsum("nij,nj->ni", np.linalg.inv(world[:, -1]), pts)[:, :3]
+            else:
+                self.chain.point = self.point_local
         self.pin_data = []
         for j, limb in self.pins:
             data = spaces.prefetch_chain(self.ob, limb, self.frames, scene)
@@ -208,6 +236,52 @@ class ChainEdit:
             if j is not None:
                 pts[n] = self.result.tip[j]
         return [tuple(p) for p in pts]
+
+    def finish(self):
+        """Second stage (decision 10): turn ``aim_bone`` so the grabbed point looks at the target, measured on
+        the rig as it is after the chain moved (frame stepping over the window). No-op without an aim bone."""
+        if not self.aim_bone or self.result is None:
+            return
+        scene = bpy.context.scene
+        ob = self.ob
+        pb = ob.pose.bones[self.aim_bone]
+        mode = pb.rotation_mode
+        channel, size = spaces.rotation_channel(pb)
+        mw = np.asarray(ob.matrix_world, dtype=np.float64)
+        p_local = np.r_[self.point_local if self.point_local is not None else (0.0, pb.bone.length, 0.0), 1.0]
+        active = self.weights > 0.0
+        old = np.empty((len(self.frames), size))
+        new = np.empty((len(self.frames), size))
+        current, sub = scene.frame_current, scene.frame_subframe
+        with spaces.preserve_pose(ob):
+            try:
+                for j, f in enumerate(self.frames):
+                    scene.frame_set(int(f))
+                    old[j] = getattr(pb, channel)
+                    if not active[j]:
+                        new[j] = old[j]
+                        continue
+                    pose = np.asarray(pb.matrix, dtype=np.float64)
+                    world = mw @ pose
+                    head, point = world[:3, 3], (world @ p_local)[:3]
+                    delta = kin.rotation_between(point - head, self.result.target[j] - head)
+                    frame = kin.orthonormalize((mw @ pose @ np.linalg.inv(np.asarray(pb.matrix_basis)))[:3, :3])
+                    r = kin.local_rotation_update(frame, delta, kin.rotation_to_mat3(old[j], mode))
+                    if mode == "QUATERNION":
+                        q = kin.mat3_to_quat(r)
+                        new[j] = -q if float(np.dot(q, old[j])) < 0.0 else q
+                    else:
+                        new[j] = kin.mat3_to_euler(r, mode, compatible=old[j])
+            finally:
+                scene.frame_set(current, subframe=sub)
+        cb = action_io.channelbag(ob)
+        start = int(self.frames[0])
+        for name, ch, axis in self.aim_channels:
+            fc_old = cb.fcurves.find(pb.path_from_id(ch), index=axis) if cb is not None else None
+            model = action_io.read_channel(fc_old) if fc_old is not None else _empty_model()
+            fc, _created = action_io.ensure_channel(ob, pb, ch, axis)
+            action_io.write_channel(fc, dense.write_dense(model, start, new[:, axis], default=old[0, axis]))
+        action_io.tag(ob)
 
     def restore(self):
         self.snapshot.restore()

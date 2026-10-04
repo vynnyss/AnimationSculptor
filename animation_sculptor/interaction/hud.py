@@ -48,8 +48,9 @@ def current_layout(context, region=None):
     if region is None:
         return None
     rp, rf = radii(context)
-    half_span = state.RULER_SPAN or ruler.half_span_for(rp, rf)
-    return ruler.layout(region.width, region.height, compat.pixel_size(), context.scene.frame_current, half_span)
+    px = compat.pixel_size()
+    half_span = state.RULER_SPAN or ruler.half_span_for_width(rp, rf, ruler.ruler_width(region.width, px), px)
+    return ruler.layout(region.width, region.height, px, context.scene.frame_current, half_span)
 
 
 def hit(context, mouse):
