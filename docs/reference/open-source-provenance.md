@@ -18,13 +18,14 @@ Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
 - **P9**: ponto de referência por alvo: `engine.BONE_POINT_RESOLVER` + `engine.bone_point`; os native solves são agrupados por (armature, ponto) e o marcador do frame atual segue o mesmo ponto. O resolvedor é nosso (`trails/provider.py`, a partir do adapter do rig); sem ele vale o "Bone Point" global do upstream. Sem isso a trail de controles FK seguia o HEAD (a junta) e quase não se movia.
 - **P8**: o resultado do native solver (`pose.paths_calculate`) é rejeitado quando todos os pontos estão na origem (falha silenciosa para bones que o solver não enxerga, ex.: controles FK numa coleção de bones oculta); só aquele bone cai para frame stepping (`(obj, bone)` em `STATE.native_failed`). Revisado no PR #11: a comparação original com o bone vivo rejeitava trails válidas quando havia pose não keyada.
 - **P10**: o frame stepping (`run_step_job`) preserva a pose não keyada dos armatures envolvidos (salva antes, devolve depois de voltar ao frame; o update dessa escrita é ignorado via `self_tagged`).
+- **P11**: gancho de desenho `draw.GHOST_OFFSET` (deslocamento por fantasma do onion, só desenho), instalado pelo `trails/provider.py` para a onion expandida.
 
 `scripts/dev.py` segue a *estrutura* do BlenderAddonTemplate (subcomandos build/test, pytest dentro do Blender), com código escrito do zero. As demais linhas da tabela abaixo são o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
 
 | Componente | Projeto origem | Arquivo origem (commit) | Licença | Estratégia | Destino | Status |
 |---|---|---|---|---|---|---|
 | Engine de trails, cache, scheduler | Live Motion Path | `engine.py` (`0e173fd`) | GPL-3+ | reutilizado + patches P1–P4, P7–P9 | `animation_sculptor/trails/lmp/engine.py` | no repo (`feat/vendor-lmp`) |
-| Desenho GPU de paths/onion | Live Motion Path | `draw.py` (`0e173fd`) | GPL-3+ | reutilizado + P1, P9 | `trails/lmp/draw.py` | no repo (`feat/vendor-lmp`) |
+| Desenho GPU de paths/onion | Live Motion Path | `draw.py` (`0e173fd`) | GPL-3+ | reutilizado + P1, P9, P11 | `trails/lmp/draw.py` | no repo (`feat/vendor-lmp`) |
 | Compat 5.x, handlers, props, ops, ui | Live Motion Path | `compat.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py` (`0e173fd`) | GPL-3+ | reutilizado + P1/P3/P5 (`ui.py` com P5; `prefs.py` não vendorizado; P6 não aplicado) | `trails/lmp/` | no repo (`feat/vendor-lmp`) |
 | Acesso a F-Curves via channelbag | Live Motion Path | `compat.get_fcurves` (`0e173fd`) | GPL-3+ | adaptado (só 5.2, + escrita) | `anim/action_io.py` | no repo (`feat/core-bezier-action-io`) |
 | Tela ⇄ mundo | Motion Trail | `animation_motion_trail.py`: `screen_to_world`, `world_to_screen` (`14ab927` do espelho) | GPL-2+ | portado | `interaction/picking.py` | planejado (o spike usa `bpy_extras.view3d_utils` direto, sem código portado) |
