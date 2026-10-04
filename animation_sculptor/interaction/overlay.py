@@ -49,8 +49,8 @@ def _draw_ring(shader, co, radius, color, width):
 
 
 def draw_pixel():
-    hover, gesture = state.HOVER, state.GESTURE
-    if hover is None and gesture is None:
+    hover, gesture, refusal = state.HOVER, state.GESTURE, state.REFUSAL
+    if hover is None and gesture is None and refusal is None:
         return
     context = bpy.context
     region, rv3d = context.region, context.region_data
@@ -66,14 +66,26 @@ def draw_pixel():
                 scr = picking.project_points(region, rv3d, np.asarray(preview, dtype=np.float64))
                 pts = [(float(x), float(y)) for x, y in scr if x == x]  # drop points behind the view
                 _draw_polyline(shader, pts, COLOR_PREVIEW, 2.5 * px)
+            for world, w in gesture.get("falloff") or ():
+                if world is None:
+                    continue
+                fco = picking.world_to_screen(region, rv3d, world)
+                if fco is not None:
+                    color = (COLOR_ACTIVE[0], COLOR_ACTIVE[1], COLOR_ACTIVE[2], 0.25 + 0.75 * w)
+                    _draw_ring(shader, fco, (3.0 + 5.0 * w) * px, color, 2.0 * px)
             co = picking.world_to_screen(region, rv3d, gesture["world"])
             if co is not None:
                 color = COLOR_REFUSED if gesture.get("refused") else COLOR_ACTIVE
                 _draw_ring(shader, co, 10.0 * px, color, 2.5 * px)
-        elif hover is not None:
-            co = picking.world_to_screen(region, rv3d, hover.world)
-            if co is not None:
-                _draw_ring(shader, co, 9.0 * px, COLOR_KEY if hover.is_key else COLOR_SAMPLED, 2.0 * px)
+        else:
+            if refusal is not None:
+                co = picking.world_to_screen(region, rv3d, refusal["world"])
+                if co is not None:
+                    _draw_ring(shader, co, 11.0 * px, COLOR_REFUSED, 3.0 * px)
+            if hover is not None:
+                co = picking.world_to_screen(region, rv3d, hover.world)
+                if co is not None:
+                    _draw_ring(shader, co, 9.0 * px, COLOR_KEY if hover.is_key else COLOR_SAMPLED, 2.0 * px)
     except Exception as exc:
         print(f"[Animation Sculptor] overlay error: {exc}")
     finally:

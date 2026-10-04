@@ -14,12 +14,13 @@
 |---|---|---|
 | Hover | qualquer ponto/segmento | realce + tooltip no header (frame, tipo de ponto, controle) |
 | Clique | ponto | seleciona o ponto e vai para o frame dele (configurável) |
-| LMB arrastar | key point | **Grab** (soft, raio na roda do mouse ou `[`/`]`) |
-| LMB arrastar | sampled point | **Arc drag** (resolve handles do segmento) |
+| LMB arrastar | key point | **Grab** (soft: roda do mouse ou `[`/`]` mudam o raio em frames durante o gesto; raio 0 = só o ponto; vizinhas nunca são criadas) |
+| LMB arrastar | sampled point | **Arc drag** (resolve os handles do segmento; keys e timing intactos) |
 | Ctrl+LMB arrastar | key point | **Retime** da pose key |
 | Ctrl+LMB arrastar | segmento | **Spacing** (horizontal = favor, vertical = ease) |
 | Shift (segurando) | durante gesto | precisão ×0.1 |
-| `B` | durante arc drag | alterna "quebrar tangente" (`FREE`) |
+| Roda / `[` `]` | durante grab | raio do soft grab (frames); lembrado na sessão |
+| `B` | durante arc drag | alterna "quebrar tangente" (`FREE`); começa desligado |
 | Esc / RMB | durante gesto | cancela (restaura snapshot) |
 | soltar / Enter | durante gesto | confirma (1 passo de undo) |
 | Ctrl+Z | — | undo normal do Blender |
@@ -37,12 +38,17 @@ Teclas evitam `Alt+LMB` (conflita com "Emulate 3 Button Mouse"). Keymap editáve
 | Frame atual | marcador destacado que acompanha o controle ao vivo (já existe no LMP) |
 | Hover | anel ao redor do ponto / segmento realçado |
 | Range selecionado | trecho da trail em cor de seleção (Escopo 2) |
-| Falloff (soft grab) | pontos afetados tingidos pelo peso; raio em frames no header |
+| Falloff (soft grab) | **implementado**: anéis laranja nos pontos de key afetados, tamanho e alfa proporcionais ao peso; raio e nº de keys vizinhas no header |
 | Preview do gesto | trail original "fantasma" (alfa baixo) + trail prevista em destaque |
 | Velocidade | modo de cor *Speed* do LMP (heat-map lento→rápido) — principal leitura de spacing |
-| Recusa | ponto/segmento em vermelho + motivo no header ("segmento LINEAR", "canal com driver", "NLA ativa") |
+| Recusa | **implementado**: anel vermelho no ponto recusado + "Animation Sculptor · recusado: <motivo>" no header ("segmento LINEAR", "canal com driver", "NLA ativa", "controle só de rotação…") + warning report; some quando o hover vai para outro ponto. Segmento em vermelho: planejado |
 
-Header da área (`area.header_text_set`) durante o gesto: operação, valores (Δ em metros/frames, raio, favor/ease) e atalhos disponíveis.
+Header da área (`area.header_text_set`) durante o gesto: operação, valores (Δ em metros/frames, raio, favor/ease) e atalhos disponíveis. Como implementado:
+
+- Grab: `Grab <bone> @ <frame>   Δ…   raio <r> frames (<n> key(s) vizinha(s)) · roda/[ ]: raio   Shift: precisão · Esc/RMB: cancelar · soltar: confirmar`.
+- Arco: `Arco <bone> @ <frame>   Δ…   B: quebrar tangente [on|off]` e, quando algum eixo não pode ser editado, ` · eixos recusados: X, Y…`, seguido dos mesmos atalhos.
+- Recusa: `Animation Sculptor · recusado: <motivo>`.
+- LMB num key point = grab e num in-between = arc; Ctrl+LMB ainda recusa com "tempo (retime/spacing): ainda não implementado".
 
 ## Estados
 

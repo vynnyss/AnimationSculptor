@@ -16,8 +16,8 @@ Asset: `tests/assets/local/attack_test.blend` (`python scripts/dev.py assets`) o
 1. Pose Mode. Criar key poses nos frames 1 (idle), 10 (antecipação), 16 (ataque), 18 (impacto), 26 (follow-through), 40 (recuperação) com a mão IK, pés IK, torso e root (keyar com `I` como sempre).
 2. Ativar a tool Animation Sculptor; selecionar `hand_ik.R` (mão do golpe): trail aparece; keys como losangos; frame atual marcado.
 3. **Grab**: arrastar o key point do impacto para mais longe do corpo. Mão segue o mouse; ao soltar a trail recalculada coincide com o preview.
-4. **Soft grab**: repetir com raio 6 frames (roda do mouse); keys vizinhas acompanham suavemente.
-5. **Arc**: arrastar um ponto entre antecipação e ataque para fora: o arco abre; Dope Sheet mostra as mesmas keys.
+4. **Soft grab**: repetir o grab e, **durante o arrasto**, girar a roda do mouse (ou `[`/`]`) até raio ≈ 6 frames (lido no header; anéis laranja mostram as keys afetadas); as keys vizinhas acompanham suavemente e nenhuma key nova aparece. Raio 0 = só o ponto.
+5. **Arc**: arrastar um ponto (in-between) entre antecipação e ataque para fora: o arco abre e o ponto fica sob o cursor; Dope Sheet mostra as mesmas keys, nos mesmos frames. Repetir com `B` pressionado durante o arrasto (quebrar tangente): o segmento vizinho não muda.
 6. **Retime**: Ctrl+arrastar o key point do ataque para o frame 14: a pose inteira (pés, torso…) mudou de frame.
 7. **Spacing**: Ctrl+arrastar o segmento antecipação→ataque: ligar cor *Speed*, ver o ease mudar sem o caminho mudar.
 8. **Breakdown**: no frame 13, usar Breakdowner do painel favorecendo o ataque.
@@ -30,7 +30,7 @@ Asset: `tests/assets/local/attack_test.blend` (`python scripts/dev.py assets`) o
 ## M2 — Recusas e casos-limite (Escopo 1, 10 min)
 
 1. Controle com driver / NLA ativa / F-Curve com modificador: sculpt recusa com mensagem clara.
-2. Segmento LINEAR: arc drag recusado com aviso.
+2. Segmento LINEAR: arc drag recusado com aviso (anel vermelho no ponto + "recusado: segmento LINEAR" no header); o aviso some ao mover o hover para outro ponto.
 3. Eixo travado (`lock_location`): grab move só nos eixos livres.
 4. Armature não-Rigify simples: adapter genérico, grab funciona.
 5. Trocar de arquivo com a tool ativa: sem erro.

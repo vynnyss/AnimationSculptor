@@ -82,8 +82,9 @@ def test_refuses_active_nla(public_rig):
     assert _grab(public_rig, "hand_ik.L", 12, (0.1, 0, 0)) == {'CANCELLED'}
 
 
-def test_refuses_frame_without_key(public_rig):
-    assert _grab(public_rig, "hand_ik.L", 6, (0.1, 0, 0)) == {'CANCELLED'}
+def test_grab_mode_refuses_frame_without_key(public_rig):
+    assert bpy.ops.asc.sculpt_gesture('EXEC_DEFAULT', obj_name=public_rig.name, bone="hand_ik.L", frame=6,
+                                      delta=(0.1, 0, 0), mode='GRAB') == {'CANCELLED'}
 
 
 def test_trails_resumed_after_gesture(public_rig, addon):

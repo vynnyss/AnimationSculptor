@@ -15,6 +15,10 @@
 
 7. **[em revisão — PR `feat/spaces-rig-adapters`, empilhado sobre #7] `rig/` + `anim/spaces`**: adapters Rigify e genérico validados contra o rig gerado (e o personagem local); `P(f)` com prefetch e detecção de espaço constante; a tool recusa não-controles e controles só de rotação; painel mostra rig/adapter/conceito. *Resultado: o gesto só age em controles de translação reconhecidos; P(f) custa 0,69 ms/frame no Rigify.*
 
+8. **[em revisão — PR `feat/soft-grab-arc-drag`, empilhado sobre #8] Grab + soft grab; Arc drag; preview analítico; recusas com motivo**: `core/falloff`, `core/sculpt_ops.arc_drag` (exato, keys e timing intactos), soft grab (roda/`[ ]`, vizinhas nunca criadas), arc com `B` (quebrar tangente), anel de falloff e anel vermelho de recusa + motivo no header; **patch P8 do LMP** (native solver devolvia zeros para bones ocultos). *Resultado: critérios 4 e 5 do Escopo 1 cobertos por testes automatizados (unit 79, blender 82, ui 37).*
+
+> **Atenção: 3 PRs empilhados abertos (#7 → #8 → esta branch), o máximo.** Não abrir branch nova antes de o mantenedor mergear; revisar e mergear em ordem.
+
 ## Próximo — completar o Escopo 1
 
 - Asset **público** para o CI — **parcialmente atendido**: `tests/blender/public_rig.py` gera em tempo de teste um rig Rigify público (metarig Human → generate) com a Action `asc_public_test` (4 controles, frames 1/12/24) e os testes de trails já rodam no CI com ele. Falta: ataque completo (key poses próprias para as proporções do metarig) e mesh simples, se algum teste precisar.
@@ -22,9 +26,8 @@
 - ~~`anim/action_io` (slotted actions) + `anim/snapshot`~~ — feito (mesmo PR).
 - ~~`anim/spaces` (`P(f)` com prefetch e detecção de constante)~~ — feito [em revisão — PR `feat/spaces-rig-adapters`, empilhado sobre #7].
 - ~~`rig/` adapters Rigify e genérico, validados contra o rig gerado~~ — feito [em revisão — PR `feat/spaces-rig-adapters`, empilhado sobre #7].
-- Grab + soft grab; Arc drag; preview analítico; recusas com motivo e overlay (próximo).
-- Retime e Spacing (escopo personagem) + cor de velocidade.
-- Painel (trails, ferramenta, breakdowner/push/relax nativos), preferências, keymap.
+- ~~Grab + soft grab; Arc drag; preview analítico; recusas com motivo e overlay~~ — feito [em revisão — PR `feat/soft-grab-arc-drag`, empilhado sobre #8].
+- **Retime + spacing + cor de velocidade + breakdowner/push/relax + preferências/keymap** (próximo; completa o Escopo 1): Retime e Spacing (escopo personagem), cor de velocidade, painel (trails, ferramenta, breakdowner/push/relax nativos), preferências (raio e forma do falloff como propriedades de cena/preferência; hoje só na sessão), keymap, e o ponto de referência por alvo nas trails (FK = `TAIL`).
 - Checklist manual "Bloqueio de ataque" executado pelo usuário; feedback → agenda.
 
 ## Depois
@@ -50,12 +53,14 @@
 
 ## Bugs
 
-_(nenhum aberto)_ — corrigido nesta branch: trail não atualizava após edição nativa (G + I, Graph Editor) até o Refresh; patch P7 do LMP (Action nas dependências do alvo e `depsgraph_changed` aceita updates de Action). Regressão: `tests/ui/scenario_native_edit_refresh.py` (erro 0,154 m → 0,0) e `test_action_update_invalidates_trail`.
+_(nenhum aberto)_ — corrigido na branch `feat/soft-grab-arc-drag`: o native solver do LMP devolvia paths (0,0,0) silenciosos para bones que não enxerga (ex.: controles FK em coleção de bones oculta), então a trail ia para a origem; patch P8 valida o resultado nativo contra o bone vivo e cai para frame stepping só naquele bone (`test_native_points_validated_against_live_bone` + `scenario_arc_soft.py`). Corrigido antes (PR #7): trail não atualizava após edição nativa (G + I, Graph Editor) até o Refresh; patch P7 do LMP (Action nas dependências do alvo e `depsgraph_changed` aceita updates de Action). Regressão: `tests/ui/scenario_native_edit_refresh.py` (erro 0,154 m → 0,0) e `test_action_update_invalidates_trail`.
 
 ## Dívida técnica
 
 - ~~Spike: acesso a F-Curves em `interaction/sculpt_tool.py`~~ — resolvida (PR `feat/core-bezier-action-io`): migrou para `core/` + `anim/action_io` + `anim/snapshot`.
 - ~~`location_space` devolve `P` só para o frame avaliado atual; o prefetch de `P(f)` do grab ainda mora em `sculpt_tool.py`~~ — resolvida (PR `feat/spaces-rig-adapters`): `anim/spaces.prefetch` + `is_space_constant`; `location_space` segue válido só para o frame atual, por desenho.
+- **Trails de FK usam o HEAD do bone** (configuração global "Bone Point" do LMP): a trail de um FK (ex.: `upper_arm_fk` no ombro) quase não se move. O adapter já conhece o ponto de referência (`TAIL` para FK). Resolver com ponto de referência **por alvo** no provider/engine quando o FK ganhar gestos de tempo (próximo item) e no sculpt FK (Escopo 4).
+- Raio e forma do falloff do soft grab vivem em `interaction/state.SETTINGS` (só na sessão); promover a propriedade de cena/preferência no item de preferências/keymap.
 - Adapter genérico sem conceitos e sem heurística de FK vs IK: qualquer bone com `location` livre é controle de translação. Suficiente para a iteração 1; humanoides não-Rigify (Mixamo etc.) ficam para depois do MVP.
 - Testes de UI só rodam localmente (precisam de display); sem cobertura de GUI no CI.
 - O CI agora roda os testes de trails no rig público gerado, mas os testes do asset de ataque (Vale) continuam só locais (pulam no CI). Resolver com um ataque completo no rig público (Agenda › Próximo).

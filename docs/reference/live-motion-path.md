@@ -70,5 +70,6 @@ Implicação central: **para bones de Rigify não existe caminho barato no LMP**
 | P5 | Painéis aninhados em `ASC_PT_main`; sem header button, sem popover Overlays, sem prefs próprias | UI única | aplicado |
 | P6 | (opcional) remover ramos < 5.0 em `compat.py` | baseline 5.2 | não aplicado |
 | P7 | `build_deps` inclui a Action do objeto; `depsgraph_changed` aceita updates de Action (que não têm `is_updated_transform`/`is_updated_geometry`) | trail não atualizava após edição nativa (G + I, Graph Editor) até o Refresh | aplicado |
+| P8 | Validar o resultado do native solver contra o bone vivo no frame atual; em divergência, aquele bone (só ele) cai para frame stepping (chave `(obj, bone)` em `STATE.native_failed`, consultada por `_choose_path_engine`) | `pose.paths_calculate` devolve paths (0,0,0) silenciosos para bones que não enxerga (ex.: controles FK em coleção de bones oculta; a Vale esconde as coleções FK) | aplicado |
 
 Manter cada patch pequeno e marcado com `# ASC-PATCH Pn` para facilitar diff com upstream.
