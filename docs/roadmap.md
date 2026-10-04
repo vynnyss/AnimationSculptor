@@ -59,6 +59,14 @@ Fase 1 do [rig efêmero](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-ma
 
 ---
 
+## Reforma de UX (antes do Escopo 2) — planejada
+
+Decisão do mantenedor em 2026-10-04 ([ADR 0013](decisions/0013-body-and-trail-interaction.md), [design/sculpt-ux.md](design/sculpt-ux.md)): **agarrar o corpo** (modo Corpo: pose e arco pela malha, Rigify escondido) e **agarrar a trail** (modo Trail: timing e spacing); ferramentas **Ponta / Membro / Corpo / Smooth** na barra lateral do viewport; painel N com o modo e toggles (Trails, Onion skin, Onion expandida, Ligar Rigify); régua de tempo mais larga; onion skin normal e expandido. Quatro PRs (UX-1 a UX-4).
+
+**Pronto quando:** o mantenedor anima o ataque agarrando o corpo da Vale com o Rigify escondido, sem selecionar bones nem abrir o painel N, e ajusta timing/spacing no modo Trail.
+
+---
+
 ## Escopo 2 — Do Blender ao Godot
 
 Fechar o teste do MVP de ponta a ponta com o que o Escopo 1 já permite animar.
@@ -95,7 +103,7 @@ Ferramentas para polir o movimento sem Graph Editor.
 - Trails cientes do estado IK/FK (mostrar o controle ativo do membro).
 - Snapping IK↔FK reutilizando os operadores do Rigify; bake de switch.
 - Pins no FK (ex.: segurar a mão parada enquanto o tronco gira; pés fixos no escopo `Corpo`).
-- "Simplificar" uma região densa de volta a keys esparsas (decidir na fase 3 do rig efêmero se entra aqui ou no Escopo 3).
+- "Simplificar" uma região densa de volta a keys esparsas — **futuro** (decisão do mantenedor, 2026-10-04: keys densas não são problema).
 
 **Pronto quando:** um ataque com braço FK (swing de espada) pode ser esculpido no viewport ⇒ **MVP completo** (teste de aceitação de [project.md](project.md)).
 

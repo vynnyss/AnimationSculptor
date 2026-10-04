@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — rig efêmero (fases 3 e 4 em revisão); M1 pelo mantenedor
+## Agora — reforma de UX (plano em revisão)
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -27,11 +27,17 @@
 
 13. **[mergeado — PR #15] Rig efêmero, fase 2** (puro, só testes): `core/kinematics`, `core/solve`, `core/ephemeral`, `core/dense`. *Resultado: FK numpy = depsgraph no Rigify (< 1e-5 m); IK de 2 bones exato com plano preservado; escrita densa sem mudar nada fora da janela, inclusive no Blender; 3 bones × 200 frames em 3,4 ms.*
 
-14. **[em revisão — PR `feat/ephemeral-gesture`, a partir da `main`] Rig efêmero, fase 3 — gesto FK no viewport** (0.5.0): `RigAdapter.ephemeral_chain` (Rigify + genérico), `anim/spaces.prefetch_chain`, `interaction/ephemeral_edit.ChainEdit`, gesto em controles só de rotação (antes recusados), escopo `Membro`/`Ponta` e orientação `Mundo`/`Local` na barra e no painel. *Resultado: ponta da mão FK sob o cursor (0,00 px), keys densas só na janela, 1 Ctrl+Z, Esc bit a bit, 3,4 ms por mouse move; funciona sem Rigify (unit 538, blender 125, ui 75).*
+14. **[mergeado — PR #16] Rig efêmero, fase 3 — gesto FK no viewport** (0.5.0): `RigAdapter.ephemeral_chain` (Rigify + genérico), `anim/spaces.prefetch_chain`, `interaction/ephemeral_edit.ChainEdit`, gesto em controles só de rotação (antes recusados), escopo `Membro`/`Ponta` e orientação `Mundo`/`Local` na barra e no painel. *Resultado: ponta da mão FK sob o cursor (0,00 px), keys densas só na janela, 1 Ctrl+Z, Esc bit a bit, 3,4 ms por mouse move; funciona sem Rigify (unit 538, blender 125, ui 75).*
 
-15. **[em revisão — PR `feat/ephemeral-body`, empilhado sobre o #16] Rig efêmero, fase 4** (0.6.0): escopo `Corpo` (DLS na coluna, pernas FK presas), arrastar a ponta do bone direto, validação de rigidez (`anim/spaces.chain_rigidity`), clique sem arrasto não escreve nada. *Resultado: inclinar o corpo pela cabeça (genérico) ou pelo `chest` (Rigify) com os pés parados; coluna do Rigify acima do `chest` recusada com motivo (não rígida).*
+15. **[mergeado — PR #17] Rig efêmero, fase 4** (0.6.0): escopo `Corpo` (DLS na coluna, pernas FK presas), arrastar a ponta do bone direto, validação de rigidez (`anim/spaces.chain_rigidity`), clique sem arrasto não escreve nada. *Resultado: inclinar o corpo pela cabeça (genérico) ou pelo `chest` (Rigify) com os pés parados; coluna do Rigify acima do `chest` recusada com motivo (não rígida).*
 
-> Estado dos PRs: #1–#11, #13–#15 estão na `main`; #16 (fase 3) e a fase 4 (empilhada sobre ele) estão em revisão.
+16. **[em revisão — PR `docs/ux-reform-plan`] Plano da reforma de UX** (só docs): [ADR 0013](decisions/0013-body-and-trail-interaction.md), [ADR 0012](decisions/0012-spacing-policy-preserve-path.md), [design/sculpt-ux.md](design/sculpt-ux.md).
+17. **UX-1** — ferramentas Ponta/Membro/Corpo/Smooth na barra lateral, modo Corpo/Trail e toggles no painel N, régua v2.
+18. **UX-2** — agarrar o corpo (raycast, realce, DEF → controle, ponto na superfície, IK por grab/arco/pole), "Ligar Rigify".
+19. **UX-3** — onion skin (toggle, range da régua) e onion expandido (patch P11 do LMP).
+20. **UX-4** — Smooth (pincel temporal) e pescoço/cabeça do Rigify em duas etapas.
+
+> Estado dos PRs: #1–#11 e #13–#17 estão na `main`; o plano da reforma de UX está em revisão.
 
 ## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
 
@@ -51,6 +57,8 @@
 
 ## Depois
 
+- Reinstalar o zip automaticamente para os testes do mantenedor (pedido de 2026-10-04, futuro).
+
 - Escopo 2: pipeline Godot (validação, bake opcional, preset glTF, root motion, teste headless) + **Loop parte 1** (marcar Action cíclica, "Fechar loop", export como loop) — pedido do mantenedor em 2026-10-03.
 - Escopo 3: smooth, make arc, pins, tangent handles, ranges, retime com stretch, **Loop parte 2** (trail fechada, edição propagada nas pontas).
 - ~~**UI de tempo**~~ — feito (item 12, em revisão). Era: (fase 1 do [rig efêmero](design/ephemeral-rig.md); primeiro PR depois do merge do #11, a partir da `main`): régua de tempo no viewport com raio assimétrico (soft grab), paleta passado vermelho/futuro verde, barra nativa da ferramenta. Pedido do mantenedor em 2026-10-04, inspirado na palestra *Motion Sculpting* (BCON26).
@@ -60,12 +68,12 @@
 
 - ~~**Ordem do rig efêmero no roadmap**~~ — decidido pelo mantenedor em 2026-10-04: rig efêmero logo depois da UI de tempo, antes do Escopo 2.
 - ~~Custo do preview do gesto efêmero~~ — medido na fase 2: 3,4 ms para 3 bones × 200 frames (numpy puro); DLS de 5 bones 70 ms ⇒ `Corpo` com preview reduzido (fase 4).
-- "Simplificar" regiões densas: `graph.decimate` via `temp_override` ou port do algoritmo — decidir com o mantenedor se entra no Escopo 3 ou 4.
-- `Corpo` na coluna do Rigify acima do `chest` (não rígida: MCH de distribuição + Neck/Head Follow): Jacobiano numérico pelo depsgraph? Hoje recusado com motivo.
+- "Simplificar" regiões densas — **futuro** (decisão do mantenedor, 2026-10-04: keys densas não são problema).
+- ~~`Corpo` na coluna do Rigify acima do `chest`~~ — decidido: duas etapas (inclinar pelo chest, depois apontar a cabeça), na UX-4.
 
 
 - Confirmar no Blender 5.2 real os itens restantes de [development/blender-5.2-notes.md](development/blender-5.2-notes.md) (nomes de opções glTF). Channelbag/slots/Rigify, gizmo `test_select` e `WorkSpaceTool`: ✅ 2026-10-03.
-- Política de spacing `PRESERVE_PATH` vs `PRESERVE_SMOOTHNESS` — **ainda em aberto**: ambas estão implementadas e testadas (`core/timing_ops.set_spacing`); o padrão é `PRESERVE_PATH`. Decidir com o mantenedor testando o protótipo (M1, passo 16, trocando a política no painel Gestos); registrar ADR.
+- ~~Política de spacing~~ — decidida: `PRESERVE_PATH` ([ADR 0012](decisions/0012-spacing-policy-preserve-path.md)). Era: ambas estão implementadas e testadas (`core/timing_ops.set_spacing`); o padrão é `PRESERVE_PATH`. Decidir com o mantenedor testando o protótipo (M1, passo 16, trocando a política no painel Gestos); registrar ADR.
 - ~~Comportamento de `fcurve.update()` com handles `ALIGNED` escritos por nós~~ — ✅ 2026-10-03: `update()` mantém handles `ALIGNED` escritos colineares (`test_aligned_handles_written_collinear_survive_update`).
 - ~~Custo de `P(f)` por frame via frame stepping no rig Rigify (ms/frame)~~ — ✅ 2026-10-03: 0,69 ms/frame no `hand_ik.R` do personagem (40 frames; meta < 5 ms); o prefetch de uma trail inteira custa ~28 ms, e a detecção de constante evita o frame stepping quando o espaço não muda. Em aberto: custo de frame completo do gesto (reavaliação do Rigify + redesenho), pois o 0,19 ms medido no spike é só do operador.
 - GameRig e Rigodotify funcionam no 5.2? (antes do Escopo 2).
