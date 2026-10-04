@@ -103,3 +103,63 @@ def test_location_space_maps_location_to_head(public_rig, addon, bone, frame):
     p = spaces.location_space(public_rig, pb)
     head = public_rig.matrix_world @ pb.head
     assert (p @ pb.location - head).length < 1e-5
+
+
+def _drop_location_key(rig, bone, frame, axis):
+    fc = _channelbag(rig).fcurves.find(rig.pose.bones[bone].path_from_id("location"), index=axis)
+    kp = next(k for k in fc.keyframe_points if abs(k.co[0] - frame) < 1e-3)
+    fc.keyframe_points.remove(kp)
+    fc.update()
+    return fc
+
+
+def test_grab_inserts_missing_location_key(public_rig):
+    """Edits are always stored as keyframes: an axis without a key at the key point gets one."""
+    fc = _drop_location_key(public_rig, "hand_ik.L", 12, 0)
+    assert all(abs(k.co[0] - 12) > 1e-3 for k in fc.keyframe_points)
+    before = _head(public_rig, "hand_ik.L", 12)
+    delta = Vector((0.1, 0.0, 0.05))
+    assert _grab(public_rig, "hand_ik.L", 12, delta) == {'FINISHED'}
+    assert any(abs(k.co[0] - 12) < 1e-3 for k in fc.keyframe_points)
+    assert (_head(public_rig, "hand_ik.L", 12) - before - delta).length < 1e-4
+
+
+def test_grab_creates_missing_location_fcurve(public_rig):
+    cb = _channelbag(public_rig)
+    pb = public_rig.pose.bones["hand_ik.L"]
+    cb.fcurves.remove(cb.fcurves.find(pb.path_from_id("location"), index=1))
+    before = _head(public_rig, "hand_ik.L", 12)
+    delta = Vector((0.0, -0.1, 0.0))
+    assert _grab(public_rig, "hand_ik.L", 12, delta) == {'FINISHED'}
+    fc = cb.fcurves.find(pb.path_from_id("location"), index=1)
+    assert fc is not None and [k.co[0] for k in fc.keyframe_points] == [12.0]
+    assert (_head(public_rig, "hand_ik.L", 12) - before - delta).length < 1e-4
+
+
+def test_cancel_removes_inserted_keys_bit_for_bit(public_rig, addon):
+    """Invariant 5 with auto-keying: snapshot -> insert + edit -> restore == original."""
+    sculpt_tool = importlib.import_module(addon.__name__ + ".interaction.sculpt_tool")
+    _drop_location_key(public_rig, "hand_ik.L", 12, 2)
+    cb = _channelbag(public_rig)
+    pb = public_rig.pose.bones["hand_ik.L"]
+    cb.fcurves.remove(cb.fcurves.find(pb.path_from_id("location"), index=1))
+    keys = _keys(public_rig)
+    bpy.context.scene.frame_set(12)
+    edit = sculpt_tool._GrabEdit(public_rig, pb, 12)
+    edit.apply((0.2, -0.1, 0.3))
+    assert _keys(public_rig) != keys
+    edit.restore()
+    assert _keys(public_rig) == keys
+
+
+def test_preview_matches_evaluated_rig(public_rig, addon):
+    """Invariant 6: the live trail preview equals the rig evaluated after the edit."""
+    sculpt_tool = importlib.import_module(addon.__name__ + ".interaction.sculpt_tool")
+    pb = public_rig.pose.bones["hand_ik.L"]
+    edit = sculpt_tool._GrabEdit(public_rig, pb, 12)
+    frames = list(range(1, 25))
+    edit.prefetch(frames)
+    edit.apply((0.15, -0.05, 0.1))
+    preview = edit.preview()
+    for f, p in zip(frames, preview):
+        assert (Vector(p) - _head(public_rig, "hand_ik.L", f)).length < 1e-4, f

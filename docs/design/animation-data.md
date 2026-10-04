@@ -43,7 +43,7 @@ Itens a confirmar no Blender 5.2 real estão em [development/blender-5.2-notes.m
 
 | Situação | Política |
 |---|---|
-| Grab de key | Move key e ambos handles juntos (translação rígida). Tipos preservados. |
+| Grab de key | Move key e ambos handles juntos (translação rígida). Tipos preservados. Eixo livre de `location` sem key no frame ganha uma (valor avaliado, `AUTO_CLAMPED`); F-Curve ausente é criada no grupo do bone. Cancel remove o que foi inserido. |
 | Arc drag | Lado editado: `AUTO`/`AUTO_CLAMPED` → `ALIGNED`. Oposto girado p/ colinearidade (ou `FREE` com modificador). |
 | Spacing | Só `x` dos handles; política `PRESERVE_PATH`/`PRESERVE_SMOOTHNESS` a decidir ([modelo](motion-sculpt-model.md#4-spacing-de-segmento-escopo-de-timing)). |
 | Retime | `x` de key e handles deslocados juntos. |

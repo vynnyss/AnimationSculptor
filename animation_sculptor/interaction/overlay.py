@@ -5,6 +5,7 @@ import math
 
 import bpy
 import gpu
+import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from ..trails.lmp import compat
@@ -16,6 +17,7 @@ COLOR_KEY = (1.0, 1.0, 1.0, 1.0)
 COLOR_SAMPLED = (0.55, 0.85, 1.0, 1.0)
 COLOR_ACTIVE = (1.0, 0.75, 0.2, 1.0)
 COLOR_REFUSED = (1.0, 0.25, 0.2, 1.0)
+COLOR_PREVIEW = (1.0, 0.85, 0.3, 1.0)
 
 
 def _ring(cx, cy, radius, segments=24):
@@ -24,6 +26,17 @@ def _ring(cx, cy, radius, segments=24):
         a = 2.0 * math.pi * i / segments
         pts.append((cx + math.cos(a) * radius, cy + math.sin(a) * radius))
     return pts
+
+
+def _draw_polyline(shader, pts, color, width):
+    if len(pts) < 2:
+        return
+    batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": pts})
+    shader.bind()
+    shader.uniform_float("color", color)
+    shader.uniform_float("lineWidth", width)
+    shader.uniform_float("viewportSize", gpu.state.viewport_get()[2:])
+    batch.draw(shader)
 
 
 def _draw_ring(shader, co, radius, color, width):
@@ -48,6 +61,11 @@ def draw_pixel():
     gpu.state.blend_set('ALPHA')
     try:
         if gesture is not None:
+            preview = gesture.get("preview")
+            if preview:
+                scr = picking.project_points(region, rv3d, np.asarray(preview, dtype=np.float64))
+                pts = [(float(x), float(y)) for x, y in scr if x == x]  # drop points behind the view
+                _draw_polyline(shader, pts, COLOR_PREVIEW, 2.5 * px)
             co = picking.world_to_screen(region, rv3d, gesture["world"])
             if co is not None:
                 color = COLOR_REFUSED if gesture.get("refused") else COLOR_ACTIVE

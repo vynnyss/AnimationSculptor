@@ -6,8 +6,10 @@
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
-3. **[em revisão — PR `feat/vendor-lmp`] Vendorizar LMP** com patches P1–P5 + `trails/provider.py`; trails aparecendo nos controles do rig de teste a partir do painel do Animation Sculptor. *Resultado: visualização funcionando dentro do nosso addon (feito: `trails/lmp/` + façade, toggle "Mostrar trails", 8 testes no rig público gerado, verificação visual na GUI).*
-4. **[em revisão — PR `feat/interaction-spike`, empilhado sobre #4] Spike de interação** (ADR 0010): tool + gizmo hover + modal drag + 1 undo por gesto no rig de teste. *Resultado: ADR 0010 confirmado (opção 3, sem fallback). Feito: `interaction/` (tool, gizmo, overlay, picking, grab modal), `anim/spaces.location_space` (corrige a fórmula de `P(f)`), harness `dev.py test ui`, 23 testes de Blender + 18 checagens de UI.*
+3. **[mergeado — PR #4] Vendorizar LMP** com patches P1–P5 + `trails/provider.py`; trails aparecendo nos controles do rig de teste a partir do painel do Animation Sculptor. *Resultado: visualização funcionando dentro do nosso addon (feito: `trails/lmp/` + façade, toggle "Mostrar trails", 8 testes no rig público gerado, verificação visual na GUI).*
+4. **[mergeado — PR #5] Spike de interação** (ADR 0010): tool + gizmo hover + modal drag + 1 undo por gesto no rig de teste. *Resultado: ADR 0010 confirmado (opção 3, sem fallback). Feito: `interaction/` (tool, gizmo, overlay, picking, grab modal), `anim/spaces.location_space` (corrige a fórmula de `P(f)`), harness `dev.py test ui`, 23 testes de Blender + 18 checagens de UI.*
+
+5. **[em revisão — PR `fix/grab-autokey-live-trail`] Ajustes do grab após teste do mantenedor**: edição sempre gravada como keyframe (insere key/cria F-Curve de `location` quando falta), trail prevista ao vivo (prefetch de `P(f)`), refresh síncrono da trail ao soltar, gesto nunca fica pendurado. *Resultado: arrastar → soltar mostra a trail nova sem I/Refresh.*
 
 ## Próximo — completar o Escopo 1
 

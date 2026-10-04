@@ -54,42 +54,92 @@ def _refusal(ob, pb):
     return ""
 
 
+def _key_index(fc, frame):
+    return next((i for i, kp in enumerate(fc.keyframe_points) if abs(kp.co.x - frame) < KEY_EPSILON), None)
+
+
+def bone_has_key(ob, pb, frame):
+    """True when any F-Curve of the bone has a key at ``frame`` (a *key point* of its trail)."""
+    cb = _channelbag(ob)
+    if cb is None:
+        return False
+    prefix = pb.path_from_id()
+    return any(fc.data_path.startswith(prefix) and _key_index(fc, frame) is not None for fc in cb.fcurves)
+
+
 class _GrabEdit:
-    """Rigid grab of the location key at one frame (snapshot + apply + restore)."""
+    """Rigid grab of the location keys at one frame: snapshot, auto-key, apply, restore, live preview.
+
+    Every unlocked location axis gets a key at the frame (inserted with the current value when missing,
+    the F-Curve created when absent), so the edit is always stored as keyframes. Cancel removes what was
+    inserted and restores the rest bit for bit.
+    """
 
     def __init__(self, ob, pb, frame):
         self.ob = ob
         self.pb = pb
         self.frame = frame
+        self.trail_frames = []
+        self.p_cache = {}
+        scene = bpy.context.scene
+        if scene.frame_current != frame:
+            scene.frame_set(frame)
         cb = _channelbag(ob)
         path = pb.path_from_id("location")
-        self.channels = []          # (axis, fcurve, key index, snapshot)
+        self.channels = []          # (axis, fcurve, key index, snapshot, created, inserted)
+        self.inserted = 0
         for axis in range(3):
             if pb.lock_location[axis]:
                 continue
             fc = cb.fcurves.find(path, index=axis)
-            if fc is None:
-                continue
-            idx = next((i for i, kp in enumerate(fc.keyframe_points) if abs(kp.co.x - frame) < KEY_EPSILON), None)
-            if idx is None:
-                continue
+            created = fc is None
+            if created:
+                fc = cb.fcurves.ensure(path, index=axis, group_name=pb.name)
             snap = [(tuple(kp.co), tuple(kp.handle_left), tuple(kp.handle_right),
-                     kp.handle_left_type, kp.handle_right_type) for kp in fc.keyframe_points]
-            self.channels.append((axis, fc, idx, snap))
+                     kp.handle_left_type, kp.handle_right_type, kp.interpolation) for kp in fc.keyframe_points]
+            idx = _key_index(fc, frame)
+            inserted = idx is None
+            if inserted:
+                value = fc.evaluate(frame) if len(fc.keyframe_points) else pb.location[axis]
+                fc.keyframe_points.insert(frame, value, options={'FAST'})
+                fc.update()
+                idx = _key_index(fc, frame)
+                self.inserted += 1
+            kp = fc.keyframe_points[idx]
+            base = (tuple(kp.co), tuple(kp.handle_left), tuple(kp.handle_right))
+            self.channels.append((axis, fc, idx, snap, created, inserted, base))
+        self.loc_fcurves = [cb.fcurves.find(path, index=i) for i in range(3)]
         # base space of `location` at this frame (anim/spaces): Δl = R(f)⁻¹ · Δw
-        scene = bpy.context.scene
-        if scene.frame_current != frame:
-            scene.frame_set(frame)
         self.r_inv = spaces.location_space(ob, pb).to_3x3().inverted_safe()
 
     @property
     def editable(self):
         return bool(self.channels)
 
+    def prefetch(self, frames):
+        """P(f) for every trail frame (frame stepping; the edited control never drives its own parent).
+        Returns to the gesture frame."""
+        scene = bpy.context.scene
+        for f in frames:
+            scene.frame_set(int(f))
+            self.p_cache[int(f)] = spaces.location_space(self.ob, self.pb)
+        scene.frame_set(self.frame)
+        self.trail_frames = [int(f) for f in frames]
+
+    def preview(self):
+        """Predicted world trail: P(f) @ location(f), location from the edited F-Curves."""
+        pts = []
+        rest = self.pb.location
+        for f in self.trail_frames:
+            loc = Vector([fc.evaluate(f) if fc is not None and len(fc.keyframe_points) else rest[i]
+                          for i, fc in enumerate(self.loc_fcurves)])
+            pts.append(tuple(self.p_cache[f] @ loc))
+        return pts
+
     def apply(self, delta_world):
         dl = self.r_inv @ Vector(delta_world)
-        for axis, fc, idx, snap in self.channels:
-            co, hl, hr, _tl, _tr = snap[idx]
+        for axis, fc, idx, _snap, _created, _inserted, base in self.channels:
+            co, hl, hr = base
             kp = fc.keyframe_points[idx]
             d = dl[axis]
             kp.co = (co[0], co[1] + d)
@@ -99,8 +149,15 @@ class _GrabEdit:
         _tag(self.ob)
 
     def restore(self):
-        for _axis, fc, _idx, snap in self.channels:
-            for kp, (co, hl, hr, tl, tr) in zip(fc.keyframe_points, snap):
+        cb = _channelbag(self.ob)
+        for _axis, fc, idx, snap, created, inserted, _base in self.channels:
+            if created:
+                cb.fcurves.remove(fc)
+                continue
+            if inserted:
+                fc.keyframe_points.remove(fc.keyframe_points[idx], fast=True)
+            for kp, (co, hl, hr, tl, tr, ipo) in zip(fc.keyframe_points, snap):
+                kp.interpolation = ipo
                 kp.handle_left_type, kp.handle_right_type = tl, tr
                 kp.co, kp.handle_left, kp.handle_right = co, hl, hr
         _tag(self.ob)
@@ -134,6 +191,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         reason = _refusal(ob, pb)
         if reason:
             return reason
+        if not bone_has_key(ob, pb, frame):
+            return "sem key neste frame (arc drag de in-between: próximo passo)"
+        if all(pb.lock_location):
+            return "location travada nos 3 eixos"
         self.edit = _GrabEdit(ob, pb, frame)
         if not self.edit.editable:
             return "sem key de location editável neste frame"
@@ -164,8 +225,14 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         self.last_mouse = (event.mouse_region_x, event.mouse_region_y)
         self.accum = Vector((0.0, 0.0, 0.0))
         provider.suspend()
+        trail = provider.get_trail_by_key((hit.obj_name, hit.bone))
+        t0 = time.perf_counter()
+        self.edit.prefetch(trail.frames if trail is not None else [hit.frame])
+        state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
+        state.STATS["prefetch_frames"] = len(self.edit.trail_frames)
         state.HOVER = None
-        state.GESTURE = {"kind": "GRAB", "world": tuple(self.origin), "bone": hit.bone, "frame": hit.frame}
+        state.GESTURE = {"kind": "GRAB", "world": tuple(self.origin), "bone": hit.bone, "frame": hit.frame,
+                         "preview": self.edit.preview(), "ghost": None if trail is None else trail.points.copy()}
         context.window_manager.modal_handler_add(self)
         self._header(context)
         return {'RUNNING_MODAL'}
@@ -193,6 +260,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             self.last_mouse = mouse
             self.edit.apply(self.accum)
             state.GESTURE["world"] = tuple(self.origin + self.accum)
+            state.GESTURE["preview"] = self.edit.preview()
             self._header(context)
             context.area.tag_redraw()
             state.STATS["last_move_ms"] = (time.perf_counter() - t0) * 1000.0
@@ -205,6 +273,12 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             self.edit.restore()
             self._end(context, cancel=True)
             return {'CANCELLED'}
+        if event.value == 'PRESS' and event.type not in {'LEFT_SHIFT', 'RIGHT_SHIFT', 'LEFTMOUSE',
+                                                          'MIDDLEMOUSE', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}:
+            # a lost mouse release must never leave the gesture (and the trail engine) hanging:
+            # any other key confirms the gesture and is passed on (e.g. I still inserts keys)
+            self._end(context, cancel=False)
+            return {'FINISHED', 'PASS_THROUGH'}
         return {'RUNNING_MODAL'}
 
     def _end(self, context, cancel):
@@ -213,6 +287,11 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         context.area.tag_redraw()
         # cancel restored the F-Curves bit for bit: the cached trail is still the truth
         provider.resume(keys=[] if cancel else [(self.obj_name, self.bone)])
+        if not cancel:
+            # recompute the edited trail now instead of waiting for the engine's timer
+            t0 = time.perf_counter()
+            provider.update_now()
+            state.STATS["refresh_ms"] = (time.perf_counter() - t0) * 1000.0
 
 
 class ASC_WT_sculpt(bpy.types.WorkSpaceTool):

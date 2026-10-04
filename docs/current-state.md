@@ -2,11 +2,11 @@
 
 > Leia primeiro. Responde "onde estamos" para qualquer sessão/agente nova. Atualizar ao final de cada sessão significativa.
 
-**Última atualização:** 2026-10-03 — spike de interação (tool + gizmo + grab modal) validado, branch `feat/interaction-spike`, empilhada sobre o PR #4.
+**Última atualização:** 2026-10-03 — grab grava keys automaticamente, trail prevista ao vivo e refresh ao soltar (PR `fix/grab-autokey-live-trail`).
 
 ## Resumo
 
-Planejamento (PR #1), esqueleto do repositório (PR #2) e assets de teste de ataque (PR #3) mergeados na `main`. **PR #4 (`feat/vendor-lmp`, trails) está em revisão** e esta branch (`feat/interaction-spike`) está **empilhada sobre ele**: o PR da interação só deve ser mergeado depois do #4 (ou retargetado para a `main` quando o #4 entrar). Trails: o Live Motion Path (`0e173fd`) vendorizado em `animation_sculptor/trails/lmp/` (P1–P5) atrás da façade `trails/provider.py`, com o toggle "Mostrar trails". Esta branch entrega o **spike de interação** ([ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md), validado): tool `Animation Sculptor` no toolbar do Pose Mode, gizmo com hover nos pontos da trail e **grab** de key point de controles de translação com um passo de undo por gesto e cancel com Esc. É qualidade de spike: ainda não há `core/`, arc drag, retime, spacing nem preview analítico.
+Planejamento (PR #1), esqueleto (PR #2), assets de ataque (PR #3), trails com o LMP vendorizado (PR #4) e o spike de interação (PR #5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado) estão na `main`. Em revisão: **ajustes do grab pedidos no teste do mantenedor** — a edição sempre vira keyframe (eixos de `location` sem key no frame ganham key; F-Curve ausente é criada), a trail prevista é desenhada ao vivo durante o arrasto e a trail real é recalculada de forma síncrona ao soltar (antes dependia do timer do engine e, na máquina do mantenedor, só aparecia com I + Refresh). Ainda sem `core/`, arc drag, retime, spacing.
 
 ## O que funciona hoje
 
@@ -21,7 +21,8 @@ Planejamento (PR #1), esqueleto do repositório (PR #2) e assets de teste de ata
 - `tests/blender/test_trails.py` (8 testes): ver [blender-tests](testing/blender-tests.md).
 - **Interação (spike)** (`animation_sculptor/interaction/`): tool `ASC_WT_sculpt` (id `animation_sculptor.sculpt`, Pose Mode, depois de Transform; clique seleciona bone, shift+clique alterna, arrasto em vazio = caixa) com o grupo de gizmos `ASC_GGT_trails` (ligado à tool; liga as trails ao ativar) e o gizmo `ASC_GT_trail_points` (hover por `test_select`, 12 px, keys favorecidas; texto no header; anel desenhado por `overlay.py`: branco = key, azul claro = in-between, laranja no gesto). LMB num ponto sob hover inicia o operador modal `asc.sculpt_gesture`: em key point de **controle de translação** faz o **grab** (delta de mouse no plano da vista → `Δl = R(f)⁻¹Δw`, aplicado rígido em key+handles do frame, eixos travados pulados, Shift = precisão ×0,1; soltar = 1 passo de undo + `provider.resume`; Esc/RMB = restaura o snapshot bit a bit). Recusas com motivo: sem Action, NLA ativa, influence/blend, driver em `location`, modificador de F-Curve, sem key de `location` no frame, ponto in-between ("arc drag: próximo"), Ctrl+LMB ("tempo (retime/spacing): ainda não implementado" — prova que o Ctrl+LMB chega ao operador via gizmo).
 - `anim/spaces.py::location_space(ob, pb)`: espaço-base `P` por `Object.convert_space` (ver "Achado" abaixo).
-- `tests/blender/test_sculpt_gesture.py` (23 testes) e `tests/ui/` (`run_ui.py` + `scenario_spike.py`, 18 checagens): ver [blender-tests](testing/blender-tests.md).
+- **Grab (ajustes pós-teste)**: a edição é sempre gravada como keyframe — eixos livres de `location` sem key no frame do key point recebem uma (valor avaliado) e F-Curves ausentes são criadas (`channelbag.fcurves.ensure`); Esc remove o que foi inserido (bit a bit). No início do gesto `P(f)` é pré-calculado para todos os frames da trail (frame stepping + `location_space`) e o overlay desenha a **trail prevista ao vivo** (`P(f) @ location(f)`, amarela) sobre a trail antiga (fantasma). Ao soltar, `provider.resume` + **`update_now()` síncrono** recalculam a trail do controle. Qualquer tecla que não seja de navegação durante o gesto confirma o gesto e é repassada (um release perdido nunca deixa o gesto/engine pendurado).
+- `tests/blender/test_sculpt_gesture.py` (27 testes) e `tests/ui/` (`run_ui.py`, `scenario_spike.py` 18 checagens, `scenario_release_refresh.py` 6 checagens no asset da Vale quando existe): ver [blender-tests](testing/blender-tests.md).
 
 ## Parcialmente implementado
 
@@ -63,8 +64,8 @@ Antes: assets de teste de ataque (PR #3; inspeção do rig Rigify em [rig-adapte
 | Suite | Passa | Falha | Observação |
 |---|---|---|---|
 | unit | 8 | 0 | CI (pytest, Python 3.13); local Python 3.12 |
-| blender | 47 | 0 | Windows, Blender 5.2.1, com o asset local gerado (24 + 23 de `test_sculpt_gesture.py`). Sem o asset (CI): 12 pulam (11 em `test_attack_asset.py` + 1 em `test_trails.py`), o resto passa — inclui trails e grab no rig público gerado |
-| ui | 18 checagens | 0 | `dev.py test ui` (`scenario_spike.py`), Windows, Blender 5.2.1 com janela; local, não roda no CI |
+| blender | 51 | 0 | Windows, Blender 5.2.1, com o asset local gerado. Sem o asset (CI): 12 pulam (11 em `test_attack_asset.py` + 1 em `test_trails.py`), o resto passa — inclui trails e grab no rig público gerado |
+| ui | 24 checagens | 0 | `dev.py test ui` (`scenario_spike.py` + `scenario_release_refresh.py`), Windows, Blender 5.2.1 com janela; local, não roda no CI |
 | manual | — | — | M0 (instalação) aplicável; verificação visual das trails feita pelo agente via GUI (não substitui o checklist do mantenedor) |
 | godot | — | — | Escopo 2 |
 
@@ -76,7 +77,15 @@ Antes: assets de teste de ataque (PR #3; inspeção do rig Rigify em [rig-adapte
 - Nome de exibição **Animation Sculptor**, ID `animation_sculptor`.
 - Todo trabalho entra por PR para `main`; merge só pelo mantenedor ([workflow](development/workflow.md)).
 
+## Medições (rig da Vale, Windows, Blender 5.2.1)
+
+| Medida | Valor |
+|---|---|
+| Prefetch de `P(f)` no início do grab (40 frames, frame stepping + `convert_space`) | 25,9 ms (≈ 0,65 ms/frame) |
+| Custo por mouse move do grab (escrita + `fcurve.update` + trail prevista), sem reavaliação do Rigify/redesenho | 0,44 ms (meta < 16 ms) |
+| Refresh síncrono da trail ao soltar (native solver) | 43 ms |
+
 ## Próximo objetivo
 
-1. Mantenedor: revisar/mergear o PR #4 (`feat/vendor-lmp`) e depois o PR do spike (`feat/interaction-spike`, empilhado) — `test all` + `test ui`, abrir o asset, ativar a tool Animation Sculptor em Pose Mode, passar o mouse sobre a trail e arrastar uma key de `hand_ik`.
-2. Próximo item de código (Agenda › **Próximo**): `core/fcurve_model` + `core/bezier` (paridade com `FCurve.evaluate`) + `anim/action_io` (slotted actions) + `anim/snapshot`, movendo para lá o acesso a F-Curves hoje embutido em `interaction/sculpt_tool.py`.
+1. Mantenedor: revisar o PR `fix/grab-autokey-live-trail` (`test all` + `test ui`; no Blender: arrastar um key point de `hand_ik.R` e ver a trail amarela ao vivo e a trail recalculada ao soltar, sem I/Refresh).
+2. Próximo item: `core/fcurve_model` + `core/bezier` (paridade com `FCurve.evaluate`, já em andamento) + `anim/action_io` + `anim/snapshot`, migrando o código de F-Curves do spike.
