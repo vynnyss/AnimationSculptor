@@ -135,6 +135,11 @@ def test_control_for_deform_rigify(public_rig, addon):
     arm["IK_FK"] = 0.0
     assert adapter.control_for_deform(rig, "DEF-forearm.R.001") == ("hand_ik.R", rig_pkg.IK, "")
     leg["IK_FK"] = 0.0
+    # pole off (Rigify default): the *_ik_target bone does nothing, the upper arm/thigh move the hand/foot
+    assert adapter.control_for_deform(rig, "DEF-upper_arm.L") == ("hand_ik.L", rig_pkg.IK, "")
+    assert adapter.control_for_deform(rig, "DEF-thigh.L")[0] == "foot_ik.L"
+    rig.pose.bones["upper_arm_parent.L"]["pole_vector"] = True
+    rig.pose.bones["thigh_parent.L"]["pole_vector"] = True
     assert adapter.control_for_deform(rig, "DEF-upper_arm.L") == ("upper_arm_ik_target.L", rig_pkg.IK, "")
     assert adapter.control_for_deform(rig, "DEF-thigh.L")[0] == "thigh_ik_target.L"
     assert adapter.control_for_deform(rig, "DEF-thigh.L")[1] == rig_pkg.IK

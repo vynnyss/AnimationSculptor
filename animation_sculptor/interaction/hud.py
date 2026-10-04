@@ -10,6 +10,7 @@ handles that the ``asc.time_window`` modal drags. No state of its own: the radii
 import blf
 import bpy
 import gpu
+import numpy as np
 from gpu_extras.batch import batch_for_shader
 
 from ..anim import action_io
@@ -129,8 +130,11 @@ def _key_frames(context):
         return ()
     frames = set()
     for fc in action_io.bone_fcurves(ob, pb):
-        for kp in fc.keyframe_points:
-            frames.add(int(round(kp.co.x)))
+        n = len(fc.keyframe_points)
+        if n:
+            co = np.empty(n * 2, dtype=np.float32)
+            fc.keyframe_points.foreach_get("co", co)
+            frames.update(np.rint(co[0::2]).astype(int).tolist())
     return sorted(frames)
 
 

@@ -1186,10 +1186,30 @@ class StepJob:
 _POSE_CHANNELS = ("location", "rotation_quaternion", "rotation_euler", "rotation_axis_angle", "scale")
 
 
+def _armatures_of(object_names):
+    """ASC-PATCH P10 (rev. 0.7.0): the armatures among ``object_names`` and the ones deforming (Armature
+    modifier) or parenting the meshes among them — onion skin targets are meshes, and stepping frames for
+    their ghosts re-applies the Action to the armature that deforms them."""
+    out = set()
+    for name in object_names:
+        ob = bpy.data.objects.get(name)
+        if ob is None:
+            continue
+        if ob.type == 'ARMATURE':
+            out.add(ob.name)
+            continue
+        for mod in getattr(ob, "modifiers", ()):
+            if mod.type == 'ARMATURE' and mod.object is not None:
+                out.add(mod.object.name)
+        if ob.parent is not None and ob.parent.type == 'ARMATURE':
+            out.add(ob.parent.name)
+    return out
+
+
 def _save_poses(object_names):
     """ASC-PATCH P10: {armature name: [(bone, channel values…)]} of the armatures among ``object_names``."""
     saved = {}
-    for name in object_names:
+    for name in _armatures_of(object_names):
         ob = bpy.data.objects.get(name)
         if ob is None or ob.type != 'ARMATURE' or ob.pose is None:
             continue

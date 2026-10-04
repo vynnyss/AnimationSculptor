@@ -123,11 +123,15 @@ class preserve_pose:
     """Context manager: frame stepping re-applies the Action and would discard pose edits that are not
     keyed yet; the current pose of ``ob`` is put back on exit."""
 
-    def __init__(self, ob):
+    def __init__(self, ob, skip=()):
+        """``skip``: bones whose pose is NOT put back (a gesture that just wrote their curves wants the
+        evaluated Action there, not the values from before its own write)."""
         self.ob = ob
+        self.skip = set(skip)
 
     def __enter__(self):
-        self.saved = [(pb.name, [tuple(getattr(pb, c)) for c in _POSE_CHANNELS]) for pb in self.ob.pose.bones]
+        self.saved = [(pb.name, [tuple(getattr(pb, c)) for c in _POSE_CHANNELS]) for pb in self.ob.pose.bones
+                      if pb.name not in self.skip]
         return self
 
     def __exit__(self, *exc):

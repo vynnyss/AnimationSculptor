@@ -187,8 +187,10 @@ class ASC_GGT_trails(bpy.types.GizmoGroup):
             scene = bpy.data.scenes.get(scene_name)
             if scene is not None:
                 sculpt_settings = getattr(scene, "asc_sculpt", None)
-                if sculpt_settings is None or sculpt_settings.interaction_mode == 'TRAIL':
-                    provider.set_enabled(scene, True)     # the Corpo mode keeps the viewport clean
+                if sculpt_settings is None:
+                    provider.set_enabled(scene, True)
+                elif sculpt_settings.interaction_mode == 'TRAIL' and sculpt_settings.show_trails:
+                    provider.set_paths(scene, True)       # the Corpo mode keeps the viewport clean
                 sculpt = getattr(scene, "asc_sculpt", None)
                 if sculpt is not None and not sculpt.palette_applied:   # once per scene: user colours win after
                     provider.apply_palette(scene)

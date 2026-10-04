@@ -46,9 +46,7 @@ class ASC_PT_main(_Base, bpy.types.Panel):
         row.prop(settings, "interaction_mode", expand=True)
         col = layout.column(align=True)
         row = col.row(align=True)
-        trails = getattr(context.scene, "asc_trails", None)
-        if trails is not None:
-            row.prop(trails, "enabled", text="Trails", toggle=True, icon='IPO_BEZIER')
+        row.prop(settings, "show_trails", text="Trails", toggle=True, icon='IPO_BEZIER')
         row.prop(settings, "show_rig", text="Ligar Rigify", toggle=True, icon='ARMATURE_DATA')
         row = col.row(align=True)
         row.prop(settings, "onion_show", text="Onion skin", toggle=True, icon='ONIONSKIN_ON')

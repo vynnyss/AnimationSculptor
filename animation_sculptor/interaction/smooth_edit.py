@@ -18,6 +18,7 @@ from ..anim.snapshot import Snapshot
 from ..core import bezier, dense, falloff, smooth
 
 PAD = 1
+MAX_PASSES = 64         # a long stroke stops smoothing further (the cost of a pass stays bounded)
 SMOOTHED = ("location", "rotation_quaternion", "rotation_euler", "scale")
 
 
@@ -76,17 +77,24 @@ class SmoothEdit:
         return "" if self.groups else "parte sem animação para suavizar"
 
     def apply_passes(self, passes):
-        """Write the channels smoothed ``passes`` times from the original curves (0 = original values)."""
-        self.passes = int(passes)
+        """Write the channels smoothed ``passes`` times from the original curves (0 = original values).
+        Incremental: only the passes beyond the last call are computed (capped at MAX_PASSES)."""
+        passes = max(0, min(int(passes), MAX_PASSES))
+        if passes < self.passes or not hasattr(self, "_smoothed"):
+            self._smoothed = [np.stack([a[4] for a in axes], axis=1) for _n, _c, axes in self.groups]
+            done = 0
+        else:
+            done = self.passes
+        self.passes = passes
         start = int(self.frames[0])
-        for _name, channel, axes in self.groups:
-            values = np.stack([a[4] for a in axes], axis=1)
-            if channel == "rotation_quaternion":
-                out = values
-                for _ in range(self.passes):
+        for g, (_name, channel, axes) in enumerate(self.groups):
+            out = self._smoothed[g]
+            for _ in range(passes - done):
+                if channel == "rotation_quaternion":
                     out = smooth.smooth_quaternions(out, self.weights, self.strength, self.sigma)
-            else:
-                out = smooth.smooth(values, self.weights, self.strength, self.passes, self.sigma)
+                else:
+                    out = smooth.smooth_pass(out, self.weights, self.strength, self.sigma)
+            self._smoothed[g] = out
             for k, (_axis, fc, model, current, _values) in enumerate(axes):
                 action_io.write_channel(fc, dense.write_dense(model, start, out[:, k], current=current))
         action_io.tag(self.ob)

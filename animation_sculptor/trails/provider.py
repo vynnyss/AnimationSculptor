@@ -177,6 +177,27 @@ def set_onion(scene, show: bool) -> None:
         s.onion_color_after = FUTURE_COLOR
     if s.onion_show != bool(show):
         s.onion_show = bool(show)
+    sync_master(scene)
+
+
+def set_paths(scene, show: bool) -> None:
+    """Show/hide the trails (LMP ``path_show``) without touching the onion skin."""
+    s = settings(scene)
+    if s is None:
+        return
+    if s.path_show != bool(show):
+        s.path_show = bool(show)
+    sync_master(scene)
+
+
+def sync_master(scene) -> None:
+    """The LMP master switch is on while the trails or the onion skin are shown (it gates both)."""
+    s = settings(scene)
+    if s is None:
+        return
+    want = bool(s.path_show or s.onion_show)
+    if s.enabled != want:
+        s.enabled = want
 
 
 def sync_onion_window(scene, radius_past: float, radius_future: float, max_ghosts: int = 12) -> tuple:

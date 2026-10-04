@@ -254,44 +254,46 @@ def _draw_onion(context, s, scene, targets, region, rv3d):
                 gpu.matrix.multiply_matrix(shift)
             else:
                 offset = None
-            if draw_solid and len(skin.tris):
-                gpu.state.depth_mask_set(bool(s.onion_depth_write))
-                if s.onion_backface_culling:
-                    gpu.state.face_culling_set('FRONT' if skin.flip else 'BACK')
-                else:
+            try:  # ASC-PATCH P11: the matrix stack stays balanced even if drawing a ghost fails
+                if draw_solid and len(skin.tris):
+                    gpu.state.depth_mask_set(bool(s.onion_depth_write))
+                    if s.onion_backface_culling:
+                        gpu.state.face_culling_set('FRONT' if skin.flip else 'BACK')
+                    else:
+                        gpu.state.face_culling_set('NONE')
+                    if shaded is not None:
+                        batch = _batch(skin, 'solid_shaded', shaded)
+                        if batch is not None:
+                            shaded.bind()
+                            _uniform(shaded, "ModelViewProjectionMatrix", ghost_mvp)  # ASC-PATCH P11
+                            _uniform(shaded, "color", color)
+                            _uniform(shaded, "lightParams", (light_dir[0], light_dir[1], light_dir[2], s.onion_light_strength))
+                            _uniform(shaded, "viewParams", (view_dir[0], view_dir[1], view_dir[2], s.onion_rim))
+                            batch.draw(shaded)
+                    else:
+                        batch = _batch(skin, 'solid_flat', flat)
+                        if batch is not None:
+                            flat.bind()
+                            _uniform(flat, "color", color)
+                            batch.draw(flat)
                     gpu.state.face_culling_set('NONE')
-                if shaded is not None:
-                    batch = _batch(skin, 'solid_shaded', shaded)
+                if draw_wire and len(skin.edges):
+                    gpu.state.depth_mask_set(False)
+                    wcol = (color[0], color[1], color[2], min(1.0, color[3] * s.onion_wire_opacity))
+                    batch = _batch(skin, 'wire', polyline)
                     if batch is not None:
-                        shaded.bind()
-                        _uniform(shaded, "ModelViewProjectionMatrix", ghost_mvp)  # ASC-PATCH P11
-                        _uniform(shaded, "color", color)
-                        _uniform(shaded, "lightParams", (light_dir[0], light_dir[1], light_dir[2], s.onion_light_strength))
-                        _uniform(shaded, "viewParams", (view_dir[0], view_dir[1], view_dir[2], s.onion_rim))
-                        batch.draw(shaded)
-                else:
-                    batch = _batch(skin, 'solid_flat', flat)
-                    if batch is not None:
-                        flat.bind()
-                        _uniform(flat, "color", color)
-                        batch.draw(flat)
-                gpu.state.face_culling_set('NONE')
-            if draw_wire and len(skin.edges):
-                gpu.state.depth_mask_set(False)
-                wcol = (color[0], color[1], color[2], min(1.0, color[3] * s.onion_wire_opacity))
-                batch = _batch(skin, 'wire', polyline)
-                if batch is not None:
-                    polyline.bind()
-                    _uniform(polyline, "color", wcol)
-                    _uniform(polyline, "lineWidth", s.onion_wire_width * px)
-                    _uniform(polyline, "viewportSize", viewport)
-                    try:
-                        polyline.uniform_bool("lineSmooth", [True])
-                    except Exception:
-                        pass
-                    batch.draw(polyline)
-            if offset is not None:   # ASC-PATCH P11
-                gpu.matrix.pop()
+                        polyline.bind()
+                        _uniform(polyline, "color", wcol)
+                        _uniform(polyline, "lineWidth", s.onion_wire_width * px)
+                        _uniform(polyline, "viewportSize", viewport)
+                        try:
+                            polyline.uniform_bool("lineSmooth", [True])
+                        except Exception:
+                            pass
+                        batch.draw(polyline)
+            finally:
+                if offset is not None:   # ASC-PATCH P11
+                    gpu.matrix.pop()
     gpu.state.depth_mask_set(False)
     gpu.state.face_culling_set('NONE')
 

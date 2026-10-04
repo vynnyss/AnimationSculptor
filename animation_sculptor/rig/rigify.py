@@ -117,7 +117,7 @@ class RigifyAdapter(RigAdapter):
         """DEF-forearm.L.001 → forearm_fk.L (arm in FK, ephemeral rig) or hand_ik.L (arm in IK, grab/arc);
         DEF-spine.00N → hips/chest/neck/head; face and other parts → the control of the same name when it
         exists, else the head."""
-        if not deform_bone.startswith("DEF-"):
+        if not deform_bone.startswith(("DEF-", "ORG-")):      # ORG-: props parented to ORG bones (hand…)
             return super().control_for_deform(arm_ob, deform_bone)
         name = deform_bone[len("DEF-"):]
         bones = arm_ob.pose.bones
@@ -128,6 +128,9 @@ class RigifyAdapter(RigAdapter):
             if state is not None and state < 0.5:
                 control = f"{_IK_CONTROL[base]}.{side}"
                 kind = CHAIN if base == "toe" else IK
+                if base in ("upper_arm", "thigh") and not self._pole_on(arm_ob, _LIMB_PARTS[base], side):
+                    # without the pole the *_ik_target bone does nothing: move the hand/foot instead
+                    control = f"{'hand_ik' if base == 'upper_arm' else 'foot_ik'}.{side}"
             else:
                 control, kind = f"{base}_fk.{side}", CHAIN
             if control in bones:
@@ -141,6 +144,10 @@ class RigifyAdapter(RigAdapter):
             if control and control in bones and self.is_control(control):
                 return control, CHAIN, ""
         return super().control_for_deform(arm_ob, deform_bone)
+
+    def _pole_on(self, arm_ob, limb, side):
+        pb = arm_ob.pose.bones.get(f"{_SWITCH[limb]}.{side}")
+        return bool(pb is not None and pb.get("pole_vector", False))
 
     def ephemeral_aim(self, arm_ob, bone_name, scope):
         """Corpo on the neck/head (decision 10): lean torso + chest first, then aim neck (and head)."""

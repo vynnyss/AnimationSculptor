@@ -18,16 +18,25 @@ def _load_post(*_args):
     state.reset()
 
 
+@persistent
+def _depsgraph_post(*_args):
+    body_pick.bump()
+
+
 def register():
     for m in _modules:
         m.register()
     if _load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(_load_post)
+    if _depsgraph_post not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(_depsgraph_post)
 
 
 def unregister():
     while _load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(_load_post)
+    while _depsgraph_post in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(_depsgraph_post)
     for m in reversed(_modules):
         try:
             m.unregister()

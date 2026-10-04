@@ -48,7 +48,9 @@ def _sync_onion(self, context):
     if hasattr(provider, "set_onion"):
         provider.set_onion(scene, self.onion_show)
     if self.onion_show and hasattr(provider, "sync_onion_window"):
-        provider.sync_onion_window(scene, self.radius_past, self.radius_future)
+        # a window of 0 frames would show no ghost at all: fall back to a few frames each side
+        rp, rf = (self.radius_past, self.radius_future) if self.radius_past or self.radius_future else (6.0, 6.0)
+        provider.sync_onion_window(scene, rp, rf)
     if hasattr(provider, "set_onion_spread"):
         provider.set_onion_spread(self.onion_show and self.onion_spread)
 
@@ -81,7 +83,13 @@ def _upd_mode(self, context):
     """The Trail mode needs the trails: switching to it turns them on (the Corpo mode leaves them as they are)."""
     scene = getattr(context, "scene", None)
     if scene is not None and self.interaction_mode == 'TRAIL':
-        _provider().set_enabled(scene, True)
+        _provider().set_paths(scene, True)
+
+
+def _upd_trails(self, context):
+    scene = getattr(context, "scene", None)
+    if scene is not None:
+        _provider().set_paths(scene, self.show_trails)
 
 
 def _upd_linked(self, _context):
@@ -116,6 +124,10 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         name="Régua de tempo",
         description="Mostrar a régua de tempo (janela do soft grab) embaixo do viewport com a ferramenta ativa",
         default=True,
+    )
+    show_trails: BoolProperty(
+        name="Trails", description="Mostrar as trajetórias (trails) dos controles selecionados",
+        default=True, update=_upd_trails,
     )
     interaction_mode: EnumProperty(
         name="Modo",
@@ -206,13 +218,34 @@ def migrate_all():
             print(f"[Animation Sculptor] settings migration skipped for {scene.name!r}: {exc}")
 
 
+def resync_all():
+    """Derived drawing state that lives outside the file (the expanded-onion hook) follows the saved toggles."""
+    import bpy
+
+    scene = bpy.context.scene if bpy.context is not None else None
+    s = getattr(scene, "asc_sculpt", None) if scene is not None else None
+    if s is None:
+        return
+    provider = _provider()
+    if hasattr(provider, "set_onion_spread"):
+        provider.set_onion_spread(s.onion_show and s.onion_spread)
+
+
 @persistent
 def _load_post(*_args):
     migrate_all()
+    try:
+        resync_all()
+    except Exception as exc:
+        print(f"[Animation Sculptor] resync after load: {exc}")
 
 
 def _migrate_timer():
     migrate_all()
+    try:
+        resync_all()
+    except Exception:
+        pass
     return None
 
 

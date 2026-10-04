@@ -154,3 +154,23 @@ def test_spread_auto_spacing_from_character_width(provider, body_rig):
     # deterministic: scrubbing frames does not change it
     bpy.context.scene.frame_set(10)
     assert provider.spread_spacing(body_rig.name) == pytest.approx(width * 1.1, rel=1e-4)
+
+
+def test_onion_frame_stepping_keeps_the_unkeyed_pose(public_rig, addon):
+    """ASC-PATCH P10 (rev. 0.7.0): the onion skin ghosts the *mesh*; stepping frames for it must not throw away
+    a pose of its armature that is not keyed yet (Relax, G without I…)."""
+    import importlib
+
+    provider = importlib.import_module(addon.__name__ + ".trails.provider")
+    rig = public_rig
+    scene = bpy.context.scene
+    bpy.context.view_layer.objects.active = rig
+    bpy.ops.object.mode_set(mode='POSE')
+    for pb in rig.pose.bones:
+        pb.select = pb.name == "hand_ik.L"
+    provider.set_onion(scene, True)
+    provider.sync_onion_window(scene, 4, 4)
+    pb = rig.pose.bones["hand_ik.L"]
+    pb.location = (0.2, -0.1, 0.3)                        # not keyed
+    provider.update_now()
+    assert tuple(round(v, 6) for v in pb.location) == (0.2, -0.1, 0.3)

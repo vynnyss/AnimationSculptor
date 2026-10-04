@@ -18,6 +18,12 @@ from mathutils import Vector
 
 _REGION_CACHE = {}      # (mesh name, vertex count, bone) -> (T, 3) int32 triangle vertex indices
 _DOMINANT_CACHE = {}    # (mesh name, vertex count) -> {vertex: dominant deform group name}
+GENERATION = 0          # bumped on every depsgraph update: the highlight is rebuilt only when the pose changed
+
+
+def bump():
+    global GENERATION
+    GENERATION += 1
 
 
 @dataclass(frozen=True)
@@ -123,8 +129,13 @@ def skin_points(mesh_name, indices):
 
 
 # -- highlight -------------------------------------------------------------------------------------
+def _mesh_key(ob):
+    """Identity of the weights a cache was built from (mesh datablock, its size, the vertex groups)."""
+    return (ob.name, ob.data.as_pointer(), len(ob.data.vertices), tuple(vg.name for vg in ob.vertex_groups))
+
+
 def _dominant(ob, deform):
-    key = (ob.name, len(ob.data.vertices))
+    key = _mesh_key(ob)
     cached = _DOMINANT_CACHE.get(key)
     if cached is not None:
         return cached
@@ -144,7 +155,7 @@ def _dominant(ob, deform):
 
 def region_triangles(ob, arm_ob, bone):
     """(T, 3) vertex indices of the triangles whose vertices are mostly dominated by ``bone``."""
-    key = (ob.name, len(ob.data.vertices), bone)
+    key = (_mesh_key(ob), bone)
     tris = _REGION_CACHE.get(key)
     if tris is not None:
         return tris
@@ -174,7 +185,8 @@ def highlight_geometry(context, mesh_name, arm_ob, bone, inflate=0.002):
     tris = region_triangles(ob, arm_ob, bone)
     if len(tris) == 0:
         return None
-    ob_eval = ob.evaluated_get(context.evaluated_depsgraph_get())
+    # from a draw callback: the view layer's depsgraph is already evaluated (no evaluation while drawing)
+    ob_eval = ob.evaluated_get(context.view_layer.depsgraph)
     emesh = ob_eval.data
     n = len(emesh.vertices)
     if n != len(ob.data.vertices):

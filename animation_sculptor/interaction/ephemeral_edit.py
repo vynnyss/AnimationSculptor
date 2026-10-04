@@ -40,6 +40,15 @@ def refusal(ob, bones) -> str:
     return ""
 
 
+def _face_frame(pts):
+    """Orthonormal frame (3, 3) (columns: edge, in-plane, normal) of a face from its first three vertices."""
+    e1 = pts[1] - pts[0]
+    e1 = e1 / max(float(np.linalg.norm(e1)), 1e-12)
+    n = np.cross(pts[1] - pts[0], pts[2] - pts[0])
+    n = n / max(float(np.linalg.norm(n)), 1e-12)
+    return np.stack((e1, np.cross(n, e1), n), axis=1)
+
+
 def _empty_model():
     return ChannelModel(np.empty((0, 2)), np.empty((0, 2)), np.empty((0, 2)))
 
@@ -96,10 +105,10 @@ class ChainEdit:
         if point_world is not None and self.point_deform:
             md = np.asarray(ob.matrix_world @ ob.pose.bones[self.point_deform].matrix, dtype=np.float64)
             self.deform_local = (np.linalg.inv(md) @ np.r_[np.asarray(point_world, dtype=np.float64), 1.0])[:3]
-        # better: the skin itself (vertices of the hit face, inverse-distance weights + a constant offset),
-        # since a skin vertex blends several deform bones
+        # better: the skin itself (vertices of the hit face: inverse-distance weights + an offset kept in the
+        # face's own frame, so it turns with the skin), since a skin vertex blends several deform bones
         self.skin = None
-        if point_world is not None and point_skin:
+        if point_world is not None and point_skin and len(point_skin[1]) >= 3:
             from . import body_pick
 
             mesh, face = point_skin
@@ -107,7 +116,8 @@ class ChainEdit:
             hit = np.asarray(point_world, dtype=np.float64)
             w = 1.0 / (np.linalg.norm(pts - hit, axis=1) + 1e-6)
             w = w / w.sum()
-            self.skin = (mesh, tuple(face), w, hit - w @ pts)
+            frame = _face_frame(pts)
+            self.skin = (mesh, tuple(face), w, frame.T @ (hit - w @ pts))
         self.aim_bones = [b for b in aim_bones if b not in self.bones]
         self.aim_bone = self.aim_bones[-1] if self.aim_bones else None
         self.point_local = None             # grabbed point in point_bone's local space (constant)
@@ -121,8 +131,8 @@ class ChainEdit:
             j = _attach_index(ob, self.bones, limb[0], hint)
             if j is not None and not set(limb) & set(self.bones):
                 self.pins.append((j, list(limb)))
-        self.reason = refusal(ob, [b for _j, limb in self.pins for b in limb]) or spaces.chain_rigidity(
-            ob, self.bones, [(self.bones[j], limb[0]) for j, limb in self.pins])
+        self.reason = (refusal(ob, [b for _j, limb in self.pins for b in limb] + self.aim_bones)
+                       or spaces.chain_rigidity(ob, self.bones, [(self.bones[j], limb[0]) for j, limb in self.pins]))
         self.edited = self.bones + [b for _j, limb in self.pins for b in limb]
         self.aim_channels = []      # rotation channels of the aimed bones (written by finish)
         for name in self.aim_bones:
@@ -162,6 +172,8 @@ class ChainEdit:
         self.frames = self.window_frames()
         extra = [self.point_bone] if self.point_local is not None and self.point_bone != self.bone else []
         extra += [b for b in self.aim_bones if b not in extra]
+        if self.deform_local is not None and self.point_deform not in extra:
+            extra.append(self.point_deform)
         data = spaces.prefetch_chain(self.ob, self.bones, self.frames, scene, extra=extra)
         self.chain = self._chain(data)
         world = self.chain.world()
@@ -172,11 +184,19 @@ class ChainEdit:
             self.pivot_origin = data["extra"][self.aim_bones[0]][:, :3, 3].copy()
         elif self.point_local is not None:
             p = np.r_[self.point_local, 1.0]
-            if extra:   # the point belongs to a bone outside the chain: re-expressed in the last bone per frame
+            if self.point_bone != self.bone:   # the point's bone is outside the chain: re-expressed per frame
                 pts = np.einsum("nij,j->ni", data["extra"][self.point_bone], p)
                 self.chain.point = np.einsum("nij,nj->ni", np.linalg.inv(world[:, -1]), pts)[:, :3]
             else:
                 self.chain.point = self.point_local
+        # the grabbed spot's own path before the edit: the goal on the skin is that path + w·Δ (not the
+        # chain-rigid approximation, which only coincides at the grabbed frame)
+        self.spot_origin = None
+        if self.skin is not None:
+            self.spot_origin = self._measure_skin()
+        elif self.deform_local is not None:
+            self.spot_origin = np.einsum("nij,j->ni", data["extra"][self.point_deform],
+                                         np.r_[self.deform_local, 1.0])[:, :3]
         self.pin_data = []
         for j, limb in self.pins:
             data = spaces.prefetch_chain(self.ob, limb, self.frames, scene)
@@ -255,6 +275,8 @@ class ChainEdit:
         without a trail (bone dragged directly), the window's tail positions."""
         if self.result is None:
             return []
+        if self.aim_origin is not None:     # the aimed part follows on release; show where it is going
+            return [tuple(p) for p in self.aim_origin + self.weights[:, None] * self.delta[None, :]]
         if len(self.trail_frames) == 0:
             return [tuple(p) for p in self.result.tip]
         pts = self.trail_points.copy()
@@ -303,19 +325,28 @@ class ChainEdit:
             return
         if self.skin is None and (self.deform_local is None or self.point_deform == self.point_bone):
             return
+        if self.spot_origin is None:
+            return
         active = self.weights > 0.0
         p = np.r_[self.deform_local, 1.0] if self.deform_local is not None else None
-        goal = self.result.target.copy()
-        target = goal.copy()
+        goal = self.spot_origin + self.weights[:, None] * self.delta[None, :]
+        target = self.result.target.copy()          # tip0 + w·Δ: the chain's own first guess
         gain = np.ones(len(self.frames))      # how much the spot moves per unit of target move (per frame)
         last_spots = last_target = None
-        for _ in range(PIVOT_ITERATIONS + 1):
+        best_err = np.full(len(self.frames), np.inf)
+        best_target = target.copy()
+        step_limit = max(float(np.linalg.norm(self.delta)), 0.01)   # a correction never jumps more than the drag
+        for it in range(PIVOT_ITERATIONS + 1):
             if self.skin is not None:
                 spots = self._measure_skin()
             else:
                 spots = np.einsum("nij,j->ni", self._measure([self.point_deform])[self.point_deform], p)[:, :3]
             err = np.where(active[:, None], goal - spots, 0.0)
-            if np.abs(err).max() < 5e-5:
+            norm = np.linalg.norm(err, axis=1)
+            better = norm < best_err                    # keep, per frame, the best target measured so far
+            best_err = np.where(better, norm, best_err)
+            best_target = np.where(better[:, None], target, best_target)
+            if norm.max() < 5e-5 or it == PIVOT_ITERATIONS:
                 break
             if last_spots is not None:      # scalar secant per frame, clamped (deterministic)
                 dt = target - last_target
@@ -324,9 +355,17 @@ class ChainEdit:
                 est = np.where(den > 1e-12, np.sum(ds * dt, axis=1) / np.maximum(den, 1e-12), gain)
                 gain = np.clip(est, 0.2, 2.0)
             last_spots, last_target = spots, target.copy()
-            target = target + err / gain[:, None]
+            step = err / gain[:, None]
+            size = np.linalg.norm(step, axis=1, keepdims=True)
+            step = np.where(size > step_limit, step * (step_limit / np.maximum(size, 1e-12)), step)
+            target = target + step
             self.apply(self.delta, target=target)
-        self.result.target = goal
+        if not np.array_equal(best_target, target):     # an unreachable spot (e.g. right at a joint) never gets worse
+            self.apply(self.delta, target=best_target)
+        self.result.target = self.tip0 + self.weights[:, None] * self.delta[None, :]
+
+    def _own_bones(self):
+        return set(self.edited) | set(self.aim_bones)
 
     def _measure_skin(self):
         """The grabbed skin spot per window frame, on the deformed mesh (frame stepping)."""
@@ -336,11 +375,12 @@ class ChainEdit:
         scene = bpy.context.scene
         out = np.empty((len(self.frames), 3))
         current, sub = scene.frame_current, scene.frame_subframe
-        with spaces.preserve_pose(self.ob):
+        with spaces.preserve_pose(self.ob, skip=self._own_bones()):
             try:
                 for j, f in enumerate(self.frames):
                     scene.frame_set(int(f))
-                    out[j] = w @ body_pick.skin_points(mesh, face) + offset
+                    pts = body_pick.skin_points(mesh, face)
+                    out[j] = w @ pts + _face_frame(pts) @ offset
             finally:
                 scene.frame_set(current, subframe=sub)
         return out
@@ -351,7 +391,7 @@ class ChainEdit:
         mw = np.asarray(self.ob.matrix_world, dtype=np.float64)
         out = {b: np.empty((len(self.frames), 4, 4)) for b in bones}
         current, sub = scene.frame_current, scene.frame_subframe
-        with spaces.preserve_pose(self.ob):
+        with spaces.preserve_pose(self.ob, skip=self._own_bones()):
             try:
                 for j, f in enumerate(self.frames):
                     scene.frame_set(int(f))
@@ -373,7 +413,7 @@ class ChainEdit:
         old = np.empty((len(self.frames), size))
         new = np.empty((len(self.frames), size))
         current, sub = scene.frame_current, scene.frame_subframe
-        with spaces.preserve_pose(ob):
+        with spaces.preserve_pose(ob, skip=self._own_bones()):
             try:
                 for j, f in enumerate(self.frames):
                     scene.frame_set(int(f))

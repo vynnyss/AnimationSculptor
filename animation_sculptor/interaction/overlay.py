@@ -14,6 +14,7 @@ from . import body_pick, hud, picking, state
 
 _handle = None
 _view_handle = None
+_HIGHLIGHT = {}         # key, shader, batch of the body-part highlight (rebuilt when the pose/part changes)
 COLOR_PART = (0.25, 0.55, 1.0, 0.35)      # body part under the mouse (blue, like the reference talk)
 
 COLOR_KEY = (1.0, 1.0, 1.0, 1.0)
@@ -176,11 +177,15 @@ def draw_view():
     if settings is not None and settings.hide_on_playback and screen is not None and screen.is_animation_playing:
         return
     try:
-        pts = body_pick.highlight_geometry(context, mesh, ob, deform)
-        if pts is None or len(pts) == 0:
+        key = (mesh, deform, context.scene.frame_current, body_pick.GENERATION)
+        if _HIGHLIGHT.get("key") != key:
+            pts = body_pick.highlight_geometry(context, mesh, ob, deform)
+            shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+            _HIGHLIGHT.update(key=key, shader=shader, batch=None if pts is None or len(pts) == 0 else
+                              batch_for_shader(shader, 'TRIS', {"pos": pts.astype("float32")}))
+        batch, shader = _HIGHLIGHT.get("batch"), _HIGHLIGHT.get("shader")
+        if batch is None:
             return
-        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
-        batch = batch_for_shader(shader, 'TRIS', {"pos": [tuple(p) for p in pts]})
         gpu.state.blend_set('ALPHA')
         gpu.state.depth_test_set('LESS_EQUAL')
         gpu.state.depth_mask_set(False)

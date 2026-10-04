@@ -226,7 +226,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     """Sculpt the motion trail: drag a key point (grab, soft with the wheel) or an in-between (arc)"""
     bl_idname = "asc.sculpt_gesture"
     bl_label = "Animation Sculptor"
-    bl_options = {'REGISTER', 'UNDO'}
+    # UNDO without REGISTER: one undo step per gesture, no "Adjust Last Operation" panel (a redo would re-run
+    # execute() without the drag, the grabbed point or the Smooth passes of the interactive gesture)
+    bl_options = {'UNDO'}
 
     # parametric form (tests, redo): same edit as the mouse gesture
     obj_name: StringProperty(options={'SKIP_SAVE'})
@@ -727,6 +729,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         if event.value == 'PRESS' and event.type not in PASSIVE_KEYS:
             # a lost mouse release must never leave the gesture (and the trail engine) hanging:
             # any other key confirms the gesture and is passed on (e.g. I still inserts keys)
+            if self.edit.kind in {"GRAB", "ARC", "CHAIN"} and self.accum.length == 0.0:
+                self.edit.restore()                 # nothing was dragged: nothing is written
+                self._end(context, cancel=True)
+                return {'CANCELLED', 'PASS_THROUGH'}
             self._end(context, cancel=False)
             return {'FINISHED', 'PASS_THROUGH'}
         return {'RUNNING_MODAL'}
@@ -748,6 +754,13 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             self.edit.restore()
             self._end(context, cancel=True)
             return {'CANCELLED'}
+        if event.value == 'PRESS' and event.type not in PASSIVE_KEYS:     # a lost release never hangs the brush
+            if self.edit.passes == 0:
+                self.edit.restore()
+                self._end(context, cancel=True)
+                return {'CANCELLED', 'PASS_THROUGH'}
+            self._end(context, cancel=False)
+            return {'FINISHED', 'PASS_THROUGH'}
         return {'RUNNING_MODAL'}
 
     def _end(self, context, cancel):
@@ -757,7 +770,13 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         # cancel restored the F-Curves bit for bit: the cached trail is still the truth. Timing gestures
         # change every channel of the scope, so every trail is recomputed.
         if not cancel and self.edit.kind == "CHAIN":
-            self.edit.finish()                  # second stage (aim), if any
+            try:
+                self.edit.finish()              # skin follow-up / aim stages, measured on the rig
+            except Exception as exc:            # never leave half a gesture (nor the trail engine) behind
+                print(f"[Animation Sculptor] gesture finish failed: {exc}")
+                self.edit.restore()
+                cancel = True
+                self.report({'WARNING'}, f"Animation Sculptor: o gesto foi desfeito ({exc})")
         timing = self.edit.kind in {"RETIME", "SPACING", "CHAIN", "SMOOTH"}     # several bones change
         provider.resume(keys=[] if cancel else (None if timing else [(self.obj_name, self.bone)]))
         if not cancel:
