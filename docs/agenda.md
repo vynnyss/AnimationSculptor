@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — UI de tempo em revisão; M1 pelo mantenedor; rig efêmero a seguir
+## Agora — rig efêmero (fase 2 em revisão, fase 3 a seguir); M1 pelo mantenedor
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -23,13 +23,15 @@
 
 11. **[mergeado — PR #13] Plano do rig efêmero e da UI de tempo** (só docs): [design/ephemeral-rig.md](design/ephemeral-rig.md), [ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md).
 
-12. **[em revisão — PR `feat/time-ui`, a partir da `main`] UI de tempo** (fase 1 do rig efêmero): `core/falloff.weight_signed` + `core/ruler`, `Scene.asc_sculpt.radius_past/radius_future/radius_linked/show_time_ruler` (migração do `soft_radius` de 0.3.0), régua de tempo no viewport (`interaction/hud.py`; pontas arrastáveis pelo modal `asc.time_window`, Shift = os dois lados), soft grab assimétrico, paleta passado vermelho/futuro verde (`provider.apply_palette`, uma vez por cena + botão), barra nativa da ferramenta (`draw_settings`); versão 0.4.0. *Resultado: soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua e salvos no arquivo; trails vermelho/verde (unit 360, blender 111, ui 68).*
+12. **[mergeado — PR #14] UI de tempo** (fase 1 do rig efêmero): `core/falloff.weight_signed` + `core/ruler`, `Scene.asc_sculpt.radius_past/radius_future/radius_linked/show_time_ruler` (migração do `soft_radius` de 0.3.0), régua de tempo no viewport (`interaction/hud.py`; pontas arrastáveis pelo modal `asc.time_window`, Shift = os dois lados), soft grab assimétrico, paleta passado vermelho/futuro verde (`provider.apply_palette`, uma vez por cena + botão), barra nativa da ferramenta (`draw_settings`); versão 0.4.0. *Resultado: soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua e salvos no arquivo; trails vermelho/verde (unit 360, blender 111, ui 68).*
 
-> Estado dos PRs: #1–#11 e #13 estão na `main`; a UI de tempo está em revisão.
+13. **[em revisão — PR `feat/ephemeral-core`, a partir da `main`] Rig efêmero, fase 2** (puro, só testes): `core/kinematics`, `core/solve`, `core/ephemeral`, `core/dense`. *Resultado: FK numpy = depsgraph no Rigify (< 1e-5 m); IK de 2 bones exato com plano preservado; escrita densa sem mudar nada fora da janela, inclusive no Blender; 3 bones × 200 frames em 3,4 ms.*
+
+> Estado dos PRs: #1–#11, #13 e #14 estão na `main`; a fase 2 do rig efêmero está em revisão.
 
 ## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
 
-- **Rig efêmero, fase 2** ([design/ephemeral-rig.md](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-main-depois-do-merge-do-11)): `core/kinematics` (FK numpy, quaternion/Euler com continuidade, IK analítico de 2 bones, rotação mínima), `core/ephemeral`, `core/dense`; só testes (unit + FK numpy = depsgraph no rig público). Depois a **fase 3** (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico, keys densas, preview, undo/cancel) e a **fase 4** (`Corpo`, pins, arrastar o bone direto). Ordem decidida pelo mantenedor em 2026-10-04: logo depois da UI de tempo, antes do Escopo 2.
+- ~~**Rig efêmero, fase 2**~~ — feito (item 13). Próximo: **fase 3**. Era: ([design/ephemeral-rig.md](design/ephemeral-rig.md#fases-um-pr-cada-a-partir-da-main-depois-do-merge-do-11)): `core/kinematics` (FK numpy, quaternion/Euler com continuidade, IK analítico de 2 bones, rotação mínima), `core/ephemeral`, `core/dense`; só testes (unit + FK numpy = depsgraph no rig público). Depois a **fase 3** (gesto `Ponta`/`Membro` nos FK do Rigify e no genérico, keys densas, preview, undo/cancel) e a **fase 4** (`Corpo`, pins, arrastar o bone direto). Ordem decidida pelo mantenedor em 2026-10-04: logo depois da UI de tempo, antes do Escopo 2.
 
 - Asset **público** para o CI — **parcialmente atendido**: `tests/blender/public_rig.py` gera em tempo de teste um rig Rigify público (metarig Human → generate) com a Action `asc_public_test` (4 controles, frames 1/12/24) e os testes de trails já rodam no CI com ele. Falta: ataque completo (key poses próprias para as proporções do metarig) e mesh simples, se algum teste precisar.
 - ~~`core/bezier` + `core/fcurve_model` com paridade com `FCurve.evaluate`~~ — feito (PR `feat/core-bezier-action-io`): 300 curvas aleatórias × 801 tempos, erro máximo 0 (bit a bit).
@@ -53,7 +55,7 @@
 ## Investigação
 
 - ~~**Ordem do rig efêmero no roadmap**~~ — decidido pelo mantenedor em 2026-10-04: rig efêmero logo depois da UI de tempo, antes do Escopo 2.
-- Custo do preview do gesto efêmero (N frames × IK por mouse move; meta < 16 ms para 200 frames) — medir na fase 2.
+- ~~Custo do preview do gesto efêmero~~ — medido na fase 2: 3,4 ms para 3 bones × 200 frames (numpy puro); DLS de 5 bones 70 ms ⇒ `Corpo` com preview reduzido (fase 4).
 - "Simplificar" regiões densas: `graph.decimate` via `temp_override` ou port do algoritmo.
 
 

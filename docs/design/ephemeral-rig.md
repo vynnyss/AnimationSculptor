@@ -95,7 +95,7 @@ Curva-guia com pontos de controle aplicada a um trecho de tempo (faixa roxa na r
 ## Fases (um PR cada, a partir da `main` depois do merge do #11)
 
 1. **UI de tempo** (**implementada** — PR `feat/time-ui`, 0.4.0; ver notas abaixo) — régua de tempo no viewport com raio assimétrico (soft grab passa a usá-la), paleta passado/futuro, barra nativa da ferramenta. Independe do solve; melhora já o que existe. *Pronto quando:* soft grab com raios diferentes para passado e futuro, editáveis arrastando as pontas da régua, salvos no arquivo; trails vermelho/verde.
-2. **`core/kinematics` + `core/ephemeral` + `core/dense`** (puro, só testes). *Pronto quando:* FK em numpy bate com o Blender no rig público (< 1e-5 m, teste de Blender); IK de 2 bones atinge o alvo exato dentro do alcance e preserva o plano; escrita densa respeita a invariante de borda; quaternions sem flip.
+2. **`core/kinematics` + `core/ephemeral` + `core/dense`** (**implementada** — PR `feat/ephemeral-core`; ver notas abaixo) (puro, só testes). *Pronto quando:* FK em numpy bate com o Blender no rig público (< 1e-5 m, teste de Blender); IK de 2 bones atinge o alvo exato dentro do alcance e preserva o plano; escrita densa respeita a invariante de borda; quaternions sem flip.
 3. **Gesto efêmero `Membro`/`Ponta`** nos controles FK do Rigify e no adapter genérico, keys densas na janela, preview, undo/cancel, recusas. *Pronto quando:* swing de espada com braço FK esculpido no viewport (o critério que fechava o Escopo 4).
 4. **`Corpo` + pins + arrastar o bone direto** (ponta do bone no frame atual como alvo, sem precisar mirar na trail) + orientação `Local`/`Mundo`.
 
@@ -105,6 +105,14 @@ Curva-guia com pontos de controle aplicada a um trecho de tempo (faixa roxa na r
 - O clique numa ponta chega ao gizmo (único, `ASC_GT_trail_points`), que entrega ao `asc.sculpt_gesture`; ele inicia o modal `asc.time_window` e termina sem passo de undo; o `asc.time_window` tem o seu (1 passo; Esc/RMB restaura).
 - Roda/`[ ]` no grab mudam os dois lados pelo mesmo passo (ligados continuam iguais; desligados mantêm a diferença).
 - `ephemeral_scope`/`tip_orientation` ficam para a fase 3 (sem efeito antes do gesto).
+
+### Notas da implementação da fase 2
+
+- **Links por elo, não hierarquia**: no Rigify `hand_fk` é filho de `MCH-hand_fk` (rígido, `COPY_SCALE`, filho de `forearm_fk`), não de `forearm_fk`. O core recebe `links[i]` (transformação rígida do bone i−1 para o espaço do pai do bone i), constante ou por frame; com o helper sem pose, `inv(rest[i−1]) · rest[i]` (matrizes de repouso) já basta — verificado no rig gerado: FK numpy = depsgraph < 1e-5 m (`tests/blender/test_ephemeral_core.py`). A fase 3 (`prefetch_chain`) deve medir/validar os links por frame e recusar a cadeia quando não forem constantes (helper animado ou com escala).
+- **Atualização local**: cada bone recebe a sua rotação própria `Δ` (na configuração antiga, sem as dos ancestrais); a rotação local nova é `F⁻¹ · Δ · F · R`, com `F` a rotação do espaço do pai antigo. Exato para `F` rotação ou similaridade.
+- **Membro (3 bones)**: o IK de 2 bones leva a *cabeça* da mão a `alvo − (cauda − cabeça)`; com orientação `WORLD` a mão recebe `Δ₃ = (Δ₁Δ₂)⁻¹` e a cauda cai exata. Eixo de dobra de reserva (membro reto): eixo X do bone do meio (dobradiça do cotovelo/joelho no Rigify).
+- **Medido** (numpy, 200 frames): 1 bone 1,6 ms, 2 bones 2,6 ms, **3 bones 3,3 ms** (meta < 16 ms por mouse move); DLS com 5 bones 27–70 ms (16 iterações fixas, λ = 0,05 × comprimento, erro por iteração limitado a 0,25 × comprimento) — o `Corpo` vai precisar de preview reduzido (f₀ + amostras) ou de vetorização maior, como previsto em "Riscos".
+- **Escrita densa no Blender**: depois de `write_channel` + `fcurve.update()` a ponta da mão fica fora da janela a < 1e-5 m do que era e dentro dela a < 1e-4 m do alvo (keys float32) — confirma que o `ALIGNED` colinear das bordas sobrevive ao recálculo de handles.
 
 ## Testes (viram critérios)
 
