@@ -9,8 +9,8 @@ Normally launched by ``python scripts/dev.py assets``, which runs, inside Blende
 The character file is only read: the result is written with ``save_as_mainfile(copy=True)``
 to a different path. The copy gets:
 
-- every object except the Rigify control rig hidden in viewport and render (meshes, sword,
-  helper armatures), so motion trails are easy to see;
+- the character's meshes (and props like the sword) **visible**, so the tests and the maintainer see the
+  deformation, not only the rig; helper objects (widgets, other armatures, render-hidden collections) hidden;
 - a new Slotted Action ``asc_test_attack`` assigned to the rig (slot ``OB<rig name>``), keyed with
   the literal key poses below (Bézier, auto-clamped handles). The character's previous actions are
   kept untouched (fake user) and fingerprinted;
@@ -34,7 +34,7 @@ import os
 import sys
 
 ACTION_NAME = "asc_test_attack"
-SCRIPT_VERSION = 1
+SCRIPT_VERSION = 2      # 2: the character's meshes stay visible (deformation is checked, not only the rig)
 FRAME_START, FRAME_END = 1, 40
 
 # frame -> phase name (also written as timeline markers)
@@ -249,11 +249,14 @@ def build(output: str) -> None:
         fcurve.keyframe_points[0].interpolation = "CONSTANT"
         fcurve.update()
 
-    # Only the control rig stays visible.
+    # The rig and the character's meshes stay visible (the deformation is what the tests and the animator
+    # look at); widgets, other armatures and objects of render-hidden collections are hidden.
     for ob in bpy.data.objects:
-        if ob is not rig:
-            ob.hide_viewport = True
-            ob.hide_render = True
+        if ob is rig:
+            continue
+        shown = (ob.type == "MESH" and not ob.name.startswith("WGT-") and ob.users_collection
+                 and all(not c.hide_render for c in ob.users_collection))
+        ob.hide_viewport = ob.hide_render = not shown
 
     scene.frame_start, scene.frame_end = FRAME_START, FRAME_END
     scene.timeline_markers.clear()

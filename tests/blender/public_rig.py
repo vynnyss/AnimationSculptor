@@ -79,6 +79,14 @@ def build(path: str) -> None:
     for ob in bpy.data.objects:
         if ob is not rig:
             ob.hide_viewport = ob.hide_render = True
+    # a simple skinned body on every deform bone: tests check the mesh deformation, not only the rig
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import body_mesh
+
+    body_mesh.add_skinned_body(rig)
     bpy.context.view_layer.objects.active = rig
     rig.select_set(True)
     scene["asc_public_rig"] = rig.name

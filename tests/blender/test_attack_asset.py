@@ -116,14 +116,17 @@ def test_animation_drives_the_rig(rig, scene):
     assert impact.z < anticipation.z - 0.5
 
 
-def test_everything_but_the_rig_is_hidden(rig):
-    meshes = [ob for ob in bpy.data.objects if ob.type == "MESH"]
-    assert meshes
+def test_rig_and_character_meshes_are_visible(rig):
+    """Asset v2: the deformation is visible (the tests check the mesh, not only the rig); helpers hidden."""
+    assert not rig.hide_viewport
+    deformed = [ob for ob in bpy.data.objects if ob.type == "MESH" and not ob.hide_viewport
+                and any(m.type == 'ARMATURE' and m.object is rig for m in ob.modifiers)]
+    assert deformed, "no visible mesh deformed by the rig"
     for ob in bpy.data.objects:
-        if ob is rig:
-            assert not ob.hide_viewport
-        else:
+        if ob is not rig and ob.type != "MESH":
             assert ob.hide_viewport and ob.hide_render, ob.name
+        if ob.name.startswith("WGT-"):
+            assert ob.hide_viewport, ob.name
 
 
 def test_previous_actions_preserved_in_copy(scene, rig):
