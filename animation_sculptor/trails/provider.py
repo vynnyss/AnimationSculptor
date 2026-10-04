@@ -161,6 +161,122 @@ def apply_palette(scene) -> bool:
     return True
 
 
+# --- Onion skin (design/sculpt-ux.md, "Onion skin") ---------------------------------------------------
+
+_LMP_DEFAULT_BEFORE = (0.145, 0.62, 0.2)
+
+
+def set_onion(scene, show: bool) -> None:
+    """Turn the LMP onion skin on or off (``Scene.asc_trails.onion_show``). On turn-on the past/future
+    palette is applied only while the onion colours are still the LMP defaults, so user colours win."""
+    s = settings(scene)
+    if s is None:
+        return
+    if show and tuple(round(c, 3) for c in s.onion_color_before) == _LMP_DEFAULT_BEFORE:
+        s.onion_color_before = PAST_COLOR
+        s.onion_color_after = FUTURE_COLOR
+    if s.onion_show != bool(show):
+        s.onion_show = bool(show)
+
+
+def sync_onion_window(scene, radius_past: float, radius_future: float, max_ghosts: int = 12) -> tuple:
+    """Ghosts per frame covering ``[f0 − radius_past, f0 + radius_future]`` (at most ``max_ghosts`` per
+    side, one shared step). Returns ``(before, after, step)``. Radius 0 on a side: no ghost there."""
+    from ..core import onion
+
+    before, after, step = onion.window(radius_past, radius_future, max_ghosts)
+    s = settings(scene)
+    if s is None:
+        return before, after, step
+    if s.onion_mode != 'FRAMES':
+        s.onion_mode = 'FRAMES'          # ghosts per frame, never per keyframe
+    if s.onion_step != step:
+        s.onion_step = step
+    if s.onion_before != before:
+        s.onion_before = before
+    if s.onion_after != after:
+        s.onion_after = after
+    return before, after, step
+
+
+class _Spread:
+    spacing = None      # explicit spacing per ghost step (None = automatic)
+    auto = {}           # obj_name -> spacing measured when the spread was enabled
+
+
+def _character_width(obj_name: str) -> float:
+    """Max of the world bounding-box X/Y extent of the object and its mesh children (rest bounds)."""
+    import bpy
+    from mathutils import Vector
+
+    ob = bpy.data.objects.get(obj_name)
+    if ob is None:
+        return 1.0
+    meshes = [c for c in ob.children_recursive if c.type == 'MESH']
+    pts = []
+    for o in (meshes or [ob]):      # the body, not the rig widgets (control shapes are wider than the character)
+        pts.extend(o.matrix_world @ Vector(c) for c in o.bound_box)
+    ext = max(max(p.x for p in pts) - min(p.x for p in pts), max(p.y for p in pts) - min(p.y for p in pts))
+    return ext if ext > 1e-6 else 1.0
+
+
+def spread_spacing(obj_name: str) -> float:
+    """World distance between consecutive ghosts: the explicit spacing, else 1.1 × the character width
+    (measured once per enable, so scrubbing does not make the ghosts breathe)."""
+    if _Spread.spacing is not None:
+        return float(_Spread.spacing)
+    sp = _Spread.auto.get(obj_name)
+    if sp is None:
+        sp = _Spread.auto[obj_name] = _character_width(obj_name) * 1.1
+    return sp
+
+
+def ghost_offset(context, obj_name: str, frame: int, current_frame: int, rv3d=None):
+    """World-space offset of the ghost at ``frame``: along the view's right axis (row 0 of
+    ``rv3d.view_matrix``), past to the left, future to the right. None when the ghost stays in place
+    (the current frame, or no 3D view)."""
+    from mathutils import Vector
+
+    from ..core import onion
+
+    if frame == current_frame:
+        return None
+    if rv3d is None:
+        rv3d = getattr(context, "region_data", None)
+    if rv3d is None:
+        return None
+    s = settings(context.scene)
+    step = s.onion_step if s is not None else 1
+    dist = onion.spread_offset(frame, current_frame, step, spread_spacing(obj_name))
+    v = Vector(rv3d.view_matrix[0][:3]).normalized() * dist
+    return (v.x, v.y, v.z)
+
+
+def set_onion_spread(enabled: bool, spacing: float | None = None) -> None:
+    """Expanded onion: each ghost drawn shifted sideways on screen ∝ (f − f₀), a film strip (drawing
+    hook only, LMP patch P11). ``spacing`` per ghost step in world units; None = from the character width."""
+    import bpy
+
+    from .lmp import draw
+
+    _Spread.spacing = None if spacing is None else float(spacing)
+    _Spread.auto = {}
+    draw.GHOST_OFFSET = ghost_offset if enabled else None
+    try:
+        for win in bpy.context.window_manager.windows:
+            for area in win.screen.areas:
+                if area.type == 'VIEW_3D':
+                    area.tag_redraw()
+    except Exception:
+        pass
+
+
+def onion_spread_enabled() -> bool:
+    from .lmp import draw
+
+    return draw.GHOST_OFFSET is not None
+
+
 def stats() -> dict:
     st = engine.STATE
     return {
