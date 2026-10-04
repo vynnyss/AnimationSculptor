@@ -94,10 +94,21 @@ def window_span(model: ChannelModel, a: int, b: int):
     return min(f_start, int(a)), max(f_end, int(b)), k_left, k_right
 
 
-def write_dense(model: ChannelModel, start: int, values, default: float = 0.0) -> ChannelModel:
+def current_values(model: ChannelModel, start: int, count: int):
+    """Values of ``model`` at the frames ``write_dense(model, start, <count values>)`` keys from the curve
+    itself (the extension to the neighbour keys). Constant during a gesture: compute once, pass as
+    ``current`` (the evaluation is most of the cost of a write)."""
+    if model.key_count == 0 or count <= 0:
+        return None
+    f_start, f_end, _kl, _kr = window_span(model, int(start), int(start) + count - 1)
+    return bezier.evaluate(model, np.arange(f_start, f_end + 1, dtype=np.float64))
+
+
+def write_dense(model: ChannelModel, start: int, values, default: float = 0.0, current=None) -> ChannelModel:
     """Dense keys at frames ``start … start + len(values) − 1`` with ``values``; returns a new model.
 
-    ``default`` is the channel value when the model has no key (the property's current value)."""
+    ``default`` is the channel value when the model has no key (the property's current value);
+    ``current`` the cached ``current_values(model, start, len(values))``."""
     values = np.asarray(values, dtype=np.float64)
     a, b = int(start), int(start) + len(values) - 1
     if len(values) == 0:
@@ -111,7 +122,8 @@ def write_dense(model: ChannelModel, start: int, values, default: float = 0.0) -
 
     f_start, f_end, k_left, k_right = window_span(model, a, b)
     frames = np.arange(f_start, f_end + 1, dtype=np.float64)
-    current = bezier.evaluate(model, frames)
+    if current is None or len(current) != len(frames):
+        current = bezier.evaluate(model, frames)
     dense_y = np.where((frames >= a) & (frames <= b), 0.0, current)
     inside = (frames >= a) & (frames <= b)
     dense_y[inside] = values[(frames[inside] - a).astype(int)]

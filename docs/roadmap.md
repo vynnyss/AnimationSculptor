@@ -90,7 +90,7 @@ Ferramentas para polir o movimento sem Graph Editor.
 
 ## Escopo 4 — FK e IK/FK
 
-- FK chain sculpt pelo **rig efêmero** ([design/ephemeral-rig.md](design/ephemeral-rig.md), [ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md)): arrastar a ponta de uma cadeia FK (braço com espada, cabeça, coluna) ⇒ IK temporário resolvido em `core/` (2 bones analítico; cadeias longas por mínimos quadrados com iterações fixas), **com quaternions**, numa janela de tempo com falloff, gravando **keys densas** (uma por frame) só na janela. Escopos `Ponta`/`Membro`/`Corpo`. Funciona em Rigify (controles FK) e no adapter genérico (esqueleto sem control rig). Substitui o port do Tangent-Space.
+- **[fases 2–3 implementadas, 0.5.0]** FK chain sculpt pelo **rig efêmero** ([design/ephemeral-rig.md](design/ephemeral-rig.md), [ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md)): arrastar a ponta de uma cadeia FK (braço com espada, cabeça, coluna) ⇒ IK temporário resolvido em `core/` (2 bones analítico; cadeias longas por mínimos quadrados com iterações fixas), **com quaternions**, numa janela de tempo com falloff, gravando **keys densas** (uma por frame) só na janela. Escopos `Ponta`/`Membro`/`Corpo`. Funciona em Rigify (controles FK) e no adapter genérico (esqueleto sem control rig). Substitui o port do Tangent-Space.
 - Arrastar o bone direto no viewport (sem mirar na trail); orientação da ponta `Mundo`/`Local`.
 - Trails cientes do estado IK/FK (mostrar o controle ativo do membro).
 - Snapping IK↔FK reutilizando os operadores do Rigify; bake de switch.

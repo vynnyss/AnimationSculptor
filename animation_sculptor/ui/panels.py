@@ -81,6 +81,10 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
         col.prop(settings, "falloff")
         col.prop(settings, "show_time_ruler")
         col = layout.column(align=True)
+        col.label(text="FK (rig efêmero)", icon='BONE_DATA')
+        col.prop(settings, "ephemeral_scope", text="Escopo")
+        col.prop(settings, "tip_orientation", text="Ponta")
+        col = layout.column(align=True)
         col.label(text="Tempo (Ctrl+arrastar)", icon='TIME')
         col.prop(settings, "timing_scope", text="Escopo")
         col.prop(settings, "spacing_policy")
@@ -95,6 +99,7 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
         for line in ("Arrastar losango: grab · roda/[ ]: raio",
                      "Pontas da régua: raio passado/futuro (Shift: os dois)",
                      "Arrastar ponto: arco · B: quebrar tangente",
+                     "Arrastar trail de FK: gira o membro (keys em todo frame da janela)",
                      "Ctrl+losango: retime · Ctrl+ponto: spacing",
                      "Shift: precisão · Esc/RMB: cancelar",
                      "Shift+Alt+K: ativar a ferramenta"):
