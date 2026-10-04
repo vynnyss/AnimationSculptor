@@ -11,10 +11,10 @@ _modules = []
 
 def _blender_modules():
     from .ui import prefs, panels
-    from . import trails
+    from . import interaction, trails
 
     # panels before trails: the trail panels are nested under the main panel
-    return (prefs, panels, trails)
+    return (prefs, panels, trails, interaction)
 
 
 def register():

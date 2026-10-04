@@ -7,6 +7,7 @@ Commands:
   test unit            pytest in tests/unit with this Python (no Blender)
   test blender [args]  pytest inside Blender --background, isolated user profile
   test all             unit + blender
+  test ui [filter]     windowed Blender driven by simulated events (tests/ui; needs a display, local only)
   build                build the extension zip into dist/
   validate             static checks (+ `blender --command extension validate` when Blender is available)
   fetch-blender        (CI, Linux) download the latest Blender 5.2.x into .blender/ and print its path
@@ -213,12 +214,43 @@ def test_blender(extra: list[str]) -> int:
     ], env=env)
 
 
+UI_DIR = TEST_PROFILE / "ui"
+
+
+def test_ui(extra: list[str]) -> int:
+    """Run tests/ui scenarios in a windowed Blender with --enable-event-simulate."""
+    blender = find_blender()
+    env = dict(os.environ)
+    env["BLENDER_USER_RESOURCES"] = str(TEST_PROFILE)
+    env["ASC_ADDON_MODULE"] = ADDON_MODULE
+    env["ASC_REPO_ROOT"] = str(ROOT)
+    TEST_PROFILE.mkdir(exist_ok=True)
+    check_blender_version(blender, env)
+    link = extensions_dir(blender, env) / ADDON_ID
+    make_link(link, PKG_DIR)
+    UI_DIR.mkdir(parents=True, exist_ok=True)
+    rig = UI_DIR / "rigify_public.blend"
+    code = _run([blender, "--background", "--factory-startup", "--python-exit-code", "1",
+                 "--python", str(ROOT / "tests" / "blender" / "public_rig.py"), "--", str(rig)], env=env)
+    if code != 0:
+        return code
+    env["ASC_UI_RIG"] = str(rig)
+    env["ASC_UI_RESULTS"] = str(UI_DIR / "results.json")
+    env["ASC_UI_SHOTS"] = str(UI_DIR / "shots")
+    env["ASC_UI_FILTER"] = extra[0] if extra else ""
+    log(f"UI scenarios: screenshots in {UI_DIR / 'shots'}")
+    return _run([blender, "--factory-startup", "--enable-event-simulate", "--addons", ADDON_MODULE,
+                 "--python", str(ROOT / "tests" / "ui" / "run_ui.py")], env=env)
+
+
 def cmd_test(args) -> None:
     extra = args.pytest_args
     if args.suite == "unit":
         code = test_unit(extra)
     elif args.suite == "blender":
         code = test_blender(extra)
+    elif args.suite == "ui":
+        code = test_ui(extra)
     else:
         code = test_unit([])
         if code == 0:
@@ -303,7 +335,7 @@ def main() -> None:
     sub.add_parser("link").set_defaults(func=cmd_link)
     sub.add_parser("unlink").set_defaults(func=cmd_unlink)
     p_test = sub.add_parser("test")
-    p_test.add_argument("suite", choices=["unit", "blender", "all"])
+    p_test.add_argument("suite", choices=["unit", "blender", "ui", "all"])
     p_test.add_argument("pytest_args", nargs=argparse.REMAINDER, help="extra pytest arguments")
     p_test.set_defaults(func=cmd_test)
     sub.add_parser("build").set_defaults(func=cmd_build)

@@ -50,8 +50,11 @@
 
 ## Operadores modais, gizmos, tools, undo
 
-- `bpy.types.WorkSpaceTool` (context `'POSE'`), `bpy.utils.register_tool` ⏳ (API estável há várias versões; confirmar).
-- `bpy.types.Gizmo` customizado com `test_select(context, location)` e `draw_select` ⏳ — **objeto do spike (ADR 0010)**.
+- `bpy.types.WorkSpaceTool` (`bl_context_mode = 'POSE'`), `bpy.utils.register_tool(tool, after={...}, separator=...)` ✅ (spike, 5.2.1): a tool aparece depois de Transform; `bl_keymap` define clique/shift+clique/caixa; o grupo de gizmos é ligado à tool por `bl_widget` e o `poll` checa a tool ativa.
+- `bpy.types.Gizmo` customizado com `test_select(context, location)` ✅ (spike): serve para hover em pontos arbitrários em espaço de tela (retorna índice ou -1); `Gizmo.target_set_operator(idname)` entrega LMB e Ctrl+LMB sobre o gizmo sob hover a um operador (modal). Propriedades de ID **não** podem ser escritas no `setup` do grupo ⇒ usar um timer. Ver [ADR 0010](../decisions/0010-tool-gizmo-modal-interaction.md#resultado-do-spike-2026-10-03).
+- `Window.event_simulate(type, value, x, y, shift=, ctrl=, alt=, ...)` ✅ (spike): só funciona com o Blender iniciado com `--enable-event-simulate`; usado por `tests/ui/` (gerador que cede entre eventos, via timer).
+- `Object.convert_space(pose_bone=, matrix=, from_space='LOCAL', to_space='POSE')` ✅: aplica as regras reais de herança (`use_local_location`, inherit rotation/scale, pose do pai). É a base de `anim/spaces.location_space`; a fórmula `M_arm · M_pose · M_basis⁻¹` é incorreta com `use_local_location = False` (controles IK do Rigify).
+- `bpy.ops.ed.undo` chamado de um timer com `temp_override` falha no poll ✅ (spike) ⇒ nos testes de UI usar Ctrl+Z / Ctrl+Shift+Z simulados.
 - Operador modal com `bl_options={'REGISTER','UNDO'}` ⇒ 1 passo de undo ao retornar `FINISHED` ✅ (comportamento padrão).
 - `area.header_text_set()` ✅.
 
