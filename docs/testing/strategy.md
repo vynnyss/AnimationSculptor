@@ -15,7 +15,7 @@ Detalhes: [blender-tests.md](blender-tests.md) (inclui os testes de UI), [godot-
 ## Princípios
 
 1. **Invariantes antes de exemplos.** Cada operação do [modelo](../design/motion-sculpt-model.md#invariantes-viram-testes) tem suas invariantes como testes (incluindo property-based simples com seeds fixas).
-2. **Paridade com o Blender.** `core/bezier` é testado contra `FCurve.evaluate` em centenas de curvas geradas (tipos de handle, interpolação, handles sobrepostos).
+2. **Paridade com o Blender.** `core/bezier` é testado contra `FCurve.evaluate` em centenas de curvas geradas (tipos de handle, interpolação, handles sobrepostos) — **feito**: `tests/blender/test_bezier_parity.py`, 300 curvas × 801 tempos, erro máximo 0 (bit a bit).
 3. **Assets gerados por script.** `.blend` de teste são reconstruíveis (`scripts/make_test_assets.py`). O asset do personagem do usuário é local (gitignored) e os testes que dependem dele pulam quando ele não existe.
 4. **Background ≠ UI.** O native solver do LMP e o desenho exigem janela. Em `--background`: forçar engine `STEP`; desenho testado com `gpu.init()` (novo no 5.2) em offscreen quando valer a pena; interação coberta por testes de operador + checklist manual.
 5. **Sem flakiness de tempo.** Nada de `sleep`; chamar `engine.update_now()` síncrono nos testes.

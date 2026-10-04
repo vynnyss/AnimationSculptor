@@ -285,6 +285,11 @@ def build_deps(ob):
     deps = set()
     try:
         deps.add(compat.id_key(ob))
+        # ASC-PATCH P7: keying (I, Graph Editor edits) only updates the Action; without it in the
+        # dependencies the trail keeps the old path until Refresh (the pose itself did not move).
+        adt = ob.animation_data
+        if adt is not None and adt.action is not None:
+            deps.add(compat.id_key(adt.action))
         data = ob.data
         if data is not None:
             deps.add(compat.id_key(data))
@@ -1695,7 +1700,8 @@ def depsgraph_changed(scene, depsgraph):
     STATE.self_tagged = set()
     for upd in updates:
         try:
-            if not (upd.is_updated_transform or upd.is_updated_geometry):
+            # ASC-PATCH P7: Action updates carry neither flag but change the animation
+            if not (upd.is_updated_transform or upd.is_updated_geometry or isinstance(upd.id, bpy.types.Action)):
                 continue
             k = compat.id_key(upd.id)
         except Exception:

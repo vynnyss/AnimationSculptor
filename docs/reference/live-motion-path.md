@@ -69,5 +69,6 @@ Implicação central: **para bones de Rigify não existe caminho barato no LMP**
 | P4 | Restaurar `animation_visualization.motion_path` após native solver (+ `STATE.self_tagged`: o restore marca o rig para update; o engine registra os IDs e `depsgraph_changed` ignora esse único update, senão a trail recomputava para sempre) | não sujar o `.blend` | aplicado |
 | P5 | Painéis aninhados em `ASC_PT_main`; sem header button, sem popover Overlays, sem prefs próprias | UI única | aplicado |
 | P6 | (opcional) remover ramos < 5.0 em `compat.py` | baseline 5.2 | não aplicado |
+| P7 | `build_deps` inclui a Action do objeto; `depsgraph_changed` aceita updates de Action (que não têm `is_updated_transform`/`is_updated_geometry`) | trail não atualizava após edição nativa (G + I, Graph Editor) até o Refresh | aplicado |
 
 Manter cada patch pequeno e marcado com `# ASC-PATCH Pn` para facilitar diff com upstream.
