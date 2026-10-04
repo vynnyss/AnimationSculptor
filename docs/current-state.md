@@ -156,4 +156,5 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 
 1. **Mantenedor**: rodar **M0** (instalar o zip 0.3.0), **M1** (Bloqueio de ataque, no `attack_test.blend` e, se quiser, no personagem próprio) e **M2** (recusas) de [testing/manual-tests.md](testing/manual-tests.md), preenchendo o "Resultado do M1". O PR B é empilhado: testar com o PR #10 (`feat/retime-spacing`) aplicado ou depois do merge dele.
 2. No M1, **decidir a política de spacing** (`PRESERVE_PATH` × `PRESERVE_SMOOTHNESS`, passo 16, trocável no painel "Gestos") ⇒ ADR.
-3. Feedback do M1 vira itens da [agenda](agenda.md); com o critério 11 cumprido, o **Escopo 1** fecha e começa o **Escopo 2** (pipeline Godot + Loop parte 1).
+3. Feedback do M1 vira itens da [agenda](agenda.md); com o critério 11 cumprido, o **Escopo 1** fecha.
+4. Planejado após o #11 (branch `docs/ephemeral-rig-plan-v2`, só documentação): **UI de tempo** (régua de tempo no viewport, paleta passado/futuro, barra da ferramenta) e **rig efêmero** com keys densas para o FK — [design/ephemeral-rig.md](design/ephemeral-rig.md), [ADR 0011](decisions/0011-ephemeral-rig-dense-keys.md) (proposto). Em seguida, Escopo 2 (pipeline Godot + Loop parte 1), salvo se o mantenedor decidir puxar o rig efêmero para antes.

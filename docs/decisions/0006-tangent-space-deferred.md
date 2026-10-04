@@ -1,6 +1,6 @@
 # 0006 — Tangent-Space fora da Iteração 1; solve linear para translação
 
-- Status: aceito
+- Status: aceito (solve linear de translação). A parte de FK (Tangent-Space no Escopo 4) é substituída pelo [ADR 0011](0011-ephemeral-rig-dense-keys.md) quando ele for aceito.
 - Data: 2026-10-03
 
 ## Contexto e problema

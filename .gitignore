@@ -11,3 +11,4 @@ scripts/.dev.toml
 .blender/
 .pytest_cache/
 tests/assets/local/
+docs/reference/local/
