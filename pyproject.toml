@@ -1,6 +1,6 @@
 [project]
 name = "animation-sculptor"
-version = "0.1.0"
+version = "0.2.0"
 description = "Blender 5.2 extension: deterministic motion sculpting for humanoid animation"
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"

@@ -17,13 +17,18 @@ class ASC_PT_main(bpy.types.Panel):
         layout = self.layout
         ob = context.active_object
         col = layout.column(align=True)
-        col.label(text="Esqueleto instalado (v0.1.0)", icon='CHECKMARK')
         if ob is None or ob.type != 'ARMATURE':
             col.label(text="Selecione uma armature", icon='INFO')
         elif ob.mode != 'POSE':
             col.label(text="Entre em Pose Mode", icon='INFO')
         else:
             col.label(text=f"Rig: {ob.name}", icon='ARMATURE_DATA')
+        trails = getattr(context.scene, "asc_trails", None)
+        if trails is not None:
+            row = layout.row(align=True)
+            row.scale_y = 1.2
+            row.prop(trails, "enabled", text="Mostrar trails", toggle=True,
+                     icon='IPO_BEZIER' if trails.enabled else 'CURVE_PATH')
 
 
 classes = (ASC_PT_main,)

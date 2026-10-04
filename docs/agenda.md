@@ -5,13 +5,13 @@
 ## Agora — início do Escopo 1
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
-2. **[em revisão — PR `test/attack-test-assets`] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
-3. **Vendorizar LMP** com patches P1–P5 + `trails/provider.py`; trails aparecendo nos controles do rig de teste a partir do painel do Animation Sculptor. *Resultado: visualização funcionando dentro do nosso addon.*
+2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
+3. **[em revisão — PR `feat/vendor-lmp`] Vendorizar LMP** com patches P1–P5 + `trails/provider.py`; trails aparecendo nos controles do rig de teste a partir do painel do Animation Sculptor. *Resultado: visualização funcionando dentro do nosso addon (feito: `trails/lmp/` + façade, toggle "Mostrar trails", 8 testes no rig público gerado, verificação visual na GUI).*
 4. **Spike de interação** (ADR 0010): tool + gizmo hover + modal drag + 1 undo por gesto no rig de teste. *Resultado: decisão confirmada ou fallback registrado.*
 
 ## Próximo — completar o Escopo 1
 
-- Asset **público** para o CI: `rigify_humanoid.blend` (metarig Human → generate, mesh simples) + ataque aplicado pelo mesmo script, para que os testes de integração rodem no CI sem o personagem do usuário (as key poses atuais usam valores locais do rig do Vale; o rig gerado do metarig tem proporções diferentes ⇒ poses próprias).
+- Asset **público** para o CI — **parcialmente atendido**: `tests/blender/public_rig.py` gera em tempo de teste um rig Rigify público (metarig Human → generate) com a Action `asc_public_test` (4 controles, frames 1/12/24) e os testes de trails já rodam no CI com ele. Falta: ataque completo (key poses próprias para as proporções do metarig) e mesh simples, se algum teste precisar.
 - `core/bezier` + `core/fcurve_model` com paridade com `FCurve.evaluate` (teste de integração).
 - `anim/action_io` (slotted actions) + `anim/snapshot` + `anim/spaces` (`P(f)` com prefetch e detecção de constante).
 - `rig/` adapters Rigify e genérico, validados contra o rig gerado.
@@ -43,9 +43,9 @@
 
 ## Bugs
 
-_(nenhum — não há código)_
+_(nenhum aberto)_
 
 ## Dívida técnica
 
-- Testes do asset de ataque dependem do personagem local ⇒ no CI só os smoke tests rodam. Resolver com o asset público (Agenda › Próximo).
+- O CI agora roda os testes de trails no rig público gerado, mas os testes do asset de ataque (Vale) continuam só locais (pulam no CI). Resolver com um ataque completo no rig público (Agenda › Próximo).
 - Key poses do ataque são literais locais do rig do Vale: outro personagem Rigify com proporções diferentes gera poses estranhas (o script falha se faltar algum controle, mas não valida plausibilidade).

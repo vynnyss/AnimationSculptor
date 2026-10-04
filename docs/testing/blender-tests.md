@@ -20,10 +20,17 @@ Testes existentes:
 - `tests/blender/test_smoke.py` — versão 5.2, extensão habilitada, painel e preferências registrados, ciclo disable/enable, `core` importável a partir da extensão instalada.
 - `tests/blender/test_attack_asset.py` — asset local de ataque ([regression-assets](regression-assets.md)): metadados e markers, Action no slot do rig, controles keyados, keys nos frames das key poses, Bézier/auto-clamped, valores = literais do script, `IK_FK` (braço esquerdo FK), animação move de fato a mão da espada, tudo exceto o rig oculto, Actions anteriores preservadas na cópia e intactas no original.
 
-## Fixtures planejadas (`tests/blender/conftest.py`)
+- `tests/blender/test_trails.py` (8 testes) — trails/LMP: namespace `asc_trails` registrado e coexistindo com o LMP original; onion skin desligado por padrão; trail (engine STEP em background) = posições avaliadas do head no rig público (tol 1e-5); `suspend` mantém o cache e `resume` invalida; `suspend` aninhado; restauração das configurações do P4; regressão do self-tag do P4 (`STATE.self_tagged`); trail no asset local de ataque (`hand_ik.R`, `foot_ik.L`, tol 1e-4 — pula sem o asset).
 
-- `rigify_rig` — abre `rigify_humanoid.blend`, retorna o objeto do rig gerado.
-- `attack_action` — abre `attack_test.blend`, rig com Action de ataque em key poses (hoje: fixtures `scene`/`rig`/`channelbag` em `test_attack_asset.py`; promover para `conftest.py` quando outros módulos usarem).
+## Fixtures (`tests/blender/conftest.py`)
+
+Existentes:
+- `addon` — garante a extensão habilitada/registrada.
+- `public_rig_path` (sessão) — gera uma vez o rig Rigify público via `tests/blender/public_rig.py`: metarig Human → `pose.rigify_generate` num subprocesso Blender de fundo separado (~6 s). Action `asc_public_test` com keys em 1/12/24 em `hand_ik.L` (loc+quat), `foot_ik.R` (loc), `torso` (loc) e `upper_arm_fk.R` (quat); frames 1–24. Nenhum binário no repo; roda no CI.
+- `public_rig` — abre uma cópia nova do rig gerado e devolve o objeto.
+- `attack_rig` — abre o asset local de ataque (Vale); pula se não existir.
+
+Planejadas:
 - `simple_rig` — armature de 3 bones sem Rigify (adapter genérico).
 - `force_step_engine` — configura o engine do LMP em `STEP` (native solver exige janela).
 

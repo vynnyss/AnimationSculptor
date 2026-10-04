@@ -1,6 +1,6 @@
 # Arquitetura
 
-> Estado: **esqueleto** — existem `animation_sculptor/` (manifest, `__init__`, `core/` vazio, `ui/prefs.py`, `ui/panels.py`), `scripts/dev.py`, `scripts/checks.py`, `tests/unit`, `tests/blender`, CI. Os demais módulos abaixo são planejados. Atualize este documento quando a implementação divergir — o código vence, a doc é corrigida.
+> Estado: **esqueleto + trails** — existem `animation_sculptor/` (manifest, `__init__`, `core/` vazio, `ui/prefs.py`, `ui/panels.py`, `trails/` com `lmp/` vendorizado (P1–P5) e `provider.py`), `scripts/dev.py`, `scripts/checks.py`, `tests/unit`, `tests/blender` (incl. `public_rig.py`, que gera o rig Rigify público), CI. Ordem de registro: prefs, panels, trails. Os demais módulos abaixo são planejados. Atualize este documento quando a implementação divergir — o código vence, a doc é corrigida.
 
 ## Visão geral
 
@@ -143,7 +143,7 @@ AnimationSculptor/
 │   └── THIRD_PARTY_NOTICES.md
 ├── tests/
 │   ├── unit/                      # pytest fora do Blender (core/)
-│   ├── blender/                   # pytest dentro do Blender (--background)
+│   ├── blender/                   # pytest dentro do Blender (--background); public_rig.py gera o rig Rigify público
 │   ├── assets/                    # .blend de regressão (gerados por script)
 │   └── conftest.py
 ├── scripts/
