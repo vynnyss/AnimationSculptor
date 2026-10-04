@@ -65,3 +65,14 @@ def max_change(before, after, frames, idx=None):
         if len(a):
             worst = max(worst, float(np.linalg.norm(b - a, axis=1).max()))
     return worst
+
+
+def tube_ends(idx):
+    """(head ring, tail ring) vertex indices of a ``body_mesh`` tube part (8 vertices per end, head first)."""
+    n = len(idx) // 2
+    return idx[:n], idx[n:]
+
+
+def centroid_shift(before, after, idx):
+    """Displacement of the centroid of vertices ``idx`` between two (V, 3) snapshots."""
+    return after[idx].mean(axis=0) - before[idx].mean(axis=0)

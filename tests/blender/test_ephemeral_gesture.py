@@ -171,3 +171,27 @@ def test_generic_adapter_skeleton_without_control_rig(addon):
     for f in range(1, 21):
         if not 6 <= f <= 14:
             assert np.linalg.norm(after[f] - before[f]) < 1e-5, f
+
+
+def test_fk_arm_skin_follows_the_drag_inside_the_window_only(public_rig):
+    """The FK arm turns: the tail ring of the hand skin moves by the drag (the ring centroid is the bone
+    tail; measured ~0, tolerance 1 mm like the rig test), the upper arm skin moved too, and the skin outside the window is unchanged."""
+    import deform_check as dc
+
+    rig = public_rig
+    _fk(rig)
+    mesh = dc.deformed_mesh(rig)
+    hand = dc.part(mesh, "DEF-hand.R")
+    _head_ring, tail_ring = dc.tube_ends(hand)
+    upper = dc.part(mesh, "DEF-upper_arm.R")
+    frames = list(range(1, 25))
+    before = dc.frames_snapshot(mesh, frames)
+    delta = Vector((0.04, -0.05, 0.06))
+    assert _gesture(rig, "hand_fk.R", 12, delta, mode='AUTO', radius_past=4, radius_future=4) == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, frames)
+    moved = dc.centroid_shift(before[12], after[12], tail_ring)
+    print(f"hand tail ring err {np.linalg.norm(moved - np.array(delta)) * 1000:.2f} mm")
+    assert abs(moved - np.array(delta)).max() < 1e-3
+    assert np.linalg.norm(dc.centroid_shift(before[12], after[12], upper)) > 1e-3        # the limb turned
+    outside = [f for f in frames if not 8 <= f <= 16]
+    assert dc.max_change(before, after, outside) < 1e-5

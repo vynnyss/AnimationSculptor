@@ -164,3 +164,38 @@ def test_preview_matches_evaluated_rig(public_rig, addon):
     preview = edit.preview()
     for f, p in zip(frames, preview):
         assert (Vector(p) - _head(public_rig, "hand_ik.L", f)).length < 1e-4, f
+
+
+def test_grab_moves_the_hand_skin_by_the_drag(public_rig):
+    """The skin follows the rig: the hand is rigid under an IK control, so every vertex of its part moves
+    by the drag (measured 5e-6 m; tolerance 1e-4, the grab criterion); the neighbouring key poses stay put on the skin."""
+    import deform_check as dc
+
+    mesh = dc.deformed_mesh(public_rig)
+    idx = dc.part(mesh, "DEF-hand.L")
+    assert len(idx) > 0
+    frames = list(range(1, 25))
+    before = dc.frames_snapshot(mesh, frames)
+    delta = Vector((0.12, -0.05, 0.08))
+    assert _grab(public_rig, "hand_ik.L", 12, delta) == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, frames)
+    shift = after[12][idx] - before[12][idx]
+    print(f"hand skin: mean err {abs(shift.mean(axis=0) - delta).max():.2e}, max err {abs(shift - delta).max():.2e}")
+    assert abs(shift.mean(axis=0) - delta).max() < 1e-4
+    assert abs(shift - delta).max() < 1e-4                                       # rigid: every vertex
+    assert dc.max_change(before, after, [1, 24]) < 1e-5                          # neighbouring key poses
+    rest = [i for i in range(len(before[12])) if i not in set(idx.tolist())]
+    assert dc.max_change(before, after, [12], rest) > 1e-3                       # the arm followed too
+
+
+def test_soft_grab_skin_only_changes_inside_the_window(public_rig):
+    import deform_check as dc
+
+    mesh = dc.deformed_mesh(public_rig)
+    before = dc.frames_snapshot(mesh, [1, 12, 24])
+    assert bpy.ops.asc.sculpt_gesture('EXEC_DEFAULT', obj_name=public_rig.name, bone="hand_ik.L", frame=12,
+                                      delta=(0.0, -0.1, 0.1), radius_past=0.0, radius_future=6.0) == {'FINISHED'}
+    after = dc.frames_snapshot(mesh, [1, 12, 24])
+    assert dc.max_change(before, after, [1]) < 1e-5                              # past radius 0
+    assert dc.max_change(before, after, [24]) < 1e-5                             # key 24 is 12 frames away (> 6)
+    assert dc.max_change(before, after, [12]) > 1e-2
