@@ -40,6 +40,28 @@ def refusal(ob, bones) -> str:
     return ""
 
 
+def window_start(lo, frame) -> int:
+    """First frame a gesture may write: ``lo``, cut at frame 0 by default (``Scene.asc_sculpt.clip_negative``;
+    a gesture grabbed before 0 keeps its own frame)."""
+    settings = getattr(bpy.context.scene, "asc_sculpt", None)
+    if settings is None or not settings.clip_negative:
+        return int(lo)
+    return int(max(lo, min(0, frame)))
+
+
+def rest_bend_sign(ob, bones) -> float:
+    """+1/−1: the side the chain's middle joint (elbow, knee) bends to about the middle bone's X axis, read
+    from the rest pose (rigs model a slight natural bend); +1 when the rest pose is straight or the chain
+    is shorter than two bones. Keeps the two-bone IK on one side at every frame (no elbow flips)."""
+    if len(bones) < 2:
+        return 1.0
+    a, b = ob.data.bones[bones[0]], ob.data.bones[bones[1]]
+    n = (a.tail_local - a.head_local).cross(b.tail_local - b.head_local)
+    if n.length < 1e-3 * a.length * b.length:
+        return 1.0
+    return 1.0 if n.dot(b.matrix_local.to_3x3().col[0]) >= 0.0 else -1.0
+
+
 def _face_frame(pts):
     """Orthonormal frame (3, 3) (columns: edge, in-plane, normal) of a face from its first three vertices."""
     e1 = pts[1] - pts[0]
@@ -159,12 +181,12 @@ class ChainEdit:
     def window_frames(self):
         lo = self.frame - int(math.floor(self.radius_past)) - PAD
         hi = self.frame + int(math.floor(self.radius_future)) + PAD
-        return np.arange(lo, hi + 1)
+        return np.arange(window_start(lo, self.frame), hi + 1)
 
-    @staticmethod
-    def _chain(data, base=None):
+    def _chain(self, data, bones, base=None):
         return ephemeral.Chain(data["base"] if base is None else base, data["links"], data["lengths"], data["loc"],
-                               data["rot"], data["modes"], data["scale"], data["locks"])
+                               data["rot"], data["modes"], data["scale"], data["locks"],
+                               bend_sign=rest_bend_sign(self.ob, bones))
 
     def _prepare(self):
         """Sample the chain (and pinned limbs) over the window from the *original* Action; keep the models."""
@@ -175,7 +197,7 @@ class ChainEdit:
         if self.deform_local is not None and self.point_deform not in extra:
             extra.append(self.point_deform)
         data = spaces.prefetch_chain(self.ob, self.bones, self.frames, scene, extra=extra)
-        self.chain = self._chain(data)
+        self.chain = self._chain(data, self.bones)
         world = self.chain.world()
         self.aim_origin = None
         if self.aim_bone and self.point_local is not None:
@@ -201,7 +223,7 @@ class ChainEdit:
         for j, limb in self.pins:
             data = spaces.prefetch_chain(self.ob, limb, self.frames, scene)
             rel = np.linalg.inv(world[:, j]) @ data["base"]
-            self.pin_data.append(ephemeral.Pin(parent=j, rel=rel, limb=self._chain(data)))
+            self.pin_data.append(ephemeral.Pin(parent=j, rel=rel, limb=self._chain(data, limb)))
         self.weights = falloff.weight_signed(self.frames.astype(np.float64) - self.frame, self.radius_past,
                                              self.radius_future, self.shape)
         self.tip0 = self.chain.tip()

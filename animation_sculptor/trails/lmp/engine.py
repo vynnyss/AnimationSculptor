@@ -107,6 +107,23 @@ CACHE = {}          # (obj_name, bone_name) -> TargetCache
 BONE_POINT_RESOLVER = None   # callable(object, bone_name) -> 'HEAD' | 'TAIL' | 'CENTER' | None
 
 
+# ASC-PATCH P12: targets chosen by the host. Animation Sculptor's Corpo mode shows the character's onion
+# meshes and the trail of the body part last touched whatever is selected; None (or the callable returning
+# None) = the LMP's own target modes.
+TARGETS_OVERRIDE = None   # callable(scene, view_layer) -> (signature, [(object, bone or None, want_path, want_onion)]) | None
+
+
+def _override(scene, view_layer):
+    """(signature, items) from TARGETS_OVERRIDE, or None (ASC-PATCH P12)."""
+    hook = TARGETS_OVERRIDE
+    if hook is None:
+        return None
+    try:
+        return hook(scene, view_layer)
+    except Exception:
+        return None
+
+
 def bone_point(ob, bone, s):
     """Point of ``bone`` followed by its trail (ASC-PATCH P9)."""
     resolver = BONE_POINT_RESOLVER
@@ -405,6 +422,9 @@ def selection_signature(scene, view_layer, context=None):
     s = _settings(scene)
     if s is None:
         return None
+    over = _override(scene, view_layer)  # ASC-PATCH P12
+    if over is not None:
+        return ('OVERRIDE', over[0], s.onion_show, s.path_show)
     if s.target_mode == 'PINNED':
         pins = tuple((it.obj.name if it.obj else "", it.bone) for it in s.pinned)
         return ('PINNED', pins, s.onion_show, s.path_show, s.onion_include_armature_meshes)
@@ -458,6 +478,12 @@ def resolve_targets(scene, view_layer, context=None):
                     add(m, None, False, True)
         else:
             add(ob)
+
+    over = _override(scene, view_layer)  # ASC-PATCH P12
+    if over is not None:
+        for ob, bone, want_path, want_onion in over[1]:
+            add(ob, bone, want_path, want_onion)
+        return targets
 
     def add_armature_bones(arm, bone_names):
         for b in bone_names:

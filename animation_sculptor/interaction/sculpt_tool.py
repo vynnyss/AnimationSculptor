@@ -226,12 +226,13 @@ class _ArcEdit(_EditBase):
 
 
 class ASC_OT_sculpt_gesture(bpy.types.Operator):
-    """Sculpt the motion trail: drag a key point (grab, soft with the wheel) or an in-between (arc)"""
+    """Esculpir a animação: arraste uma parte do corpo (modo Corpo) ou um ponto da trail (modo Trail)"""
     bl_idname = "asc.sculpt_gesture"
     bl_label = "Animation Sculptor"
     # UNDO without REGISTER: one undo step per gesture, no "Adjust Last Operation" panel (a redo would re-run
     # execute() without the drag, the grabbed point or the Smooth passes of the interactive gesture)
     bl_options = {'UNDO'}
+    new_action = ""     # Action made by this gesture (start from zero); dropped again when nothing was written
 
     # parametric form (tests, redo): same edit as the mouse gesture
     obj_name: StringProperty(options={'SKIP_SAVE'})
@@ -462,6 +463,12 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             state.LAST_TOOL = tool
         settings = _settings()
         radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
+        ob = bpy.data.objects.get(hit.obj_name)
+        if hit.on_body and ob is not None:
+            provider.focus_part(ob, hit.bone)          # the Corpo mode shows the trail of the part touched
+            if tool != TOOL_SMOOTH:
+                # start from zero: the first gesture on a character without animation makes its Action
+                self.new_action = action_io.ensure_action(ob)
         if tool == TOOL_SMOOTH:
             return self._invoke_smooth(context, event, hit, radii)
         if tool == TOOL_ROTATE or state.ROTATE_HELD:
@@ -645,7 +652,12 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             return {'CANCELLED'}
         if context.scene.frame_current != hit.frame:
             context.scene.frame_set(hit.frame)
-        reason = self._begin_smooth(ob, hit.obj_name, [hit.bone], hit.frame, radii)
+        # the whole limb up to the part (an elbow's path depends on the upper arm too); one bone when the
+        # adapter has no limb there (Rigify IK…)
+        bones, why = rig.get_adapter(ob).ephemeral_chain(ob, hit.bone, "LIMB")
+        if why or not bones:
+            bones = [hit.bone]
+        reason = self._begin_smooth(ob, hit.obj_name, bones, hit.frame, radii)
         if reason:
             return self._refuse(context, hit, reason)
         self.origin = Vector(hit.world)
@@ -736,6 +748,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         context.area.tag_redraw()
 
     def _refuse(self, context, hit, reason):
+        if self.new_action:
+            ob = bpy.data.objects.get(hit.obj_name)
+            if ob is not None:
+                action_io.drop_if_empty(ob, self.new_action)
         state.MESSAGE = reason
         state.REFUSAL = {"world": hit.world, "frame": hit.frame, "bone": hit.bone, "reason": reason}
         if context.area is not None:
@@ -935,6 +951,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
 
     def _end(self, context, cancel):
         state.GESTURE = None
+        if cancel and self.new_action:
+            ob = bpy.data.objects.get(self.obj_name)
+            if ob is not None:
+                action_io.drop_if_empty(ob, self.new_action)
         context.area.header_text_set(None)
         context.area.tag_redraw()
         # cancel restored the F-Curves bit for bit: the cached trail is still the truth. Timing gestures
@@ -1151,7 +1171,40 @@ class ASC_OT_activate_tool(bpy.types.Operator):
         return bpy.ops.wm.tool_set_by_id(name=tool)
 
 
-classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool, ASC_OT_rotate_hold)
+class ASC_OT_animate(bpy.types.Operator):
+    """Animar o personagem: entra em Pose Mode no esqueleto que deforma o objeto ativo (ou o único da cena)
+    e ativa a ferramenta, sem precisar clicar no esqueleto"""
+    bl_idname = "asc.animate"
+    bl_label = "Animar"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @staticmethod
+    def character(context):
+        arms = provider.body_characters(context.view_layer)
+        return arms[0] if len(arms) == 1 or (arms and context.active_object in arms) else None
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D' and cls.character(context) is not None
+
+    def execute(self, context):
+        arm = self.character(context)
+        if context.mode != 'OBJECT' and context.active_object is not None and context.active_object != arm:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        arm.hide_set(False)                     # Pose Mode needs the object; the bones stay hidden (toggle)
+        arm.hide_viewport = False
+        for ob in context.selected_objects:
+            ob.select_set(False)
+        arm.select_set(True)
+        context.view_layer.objects.active = arm
+        if arm.mode != 'POSE':
+            bpy.ops.object.mode_set(mode='POSE')
+        tool = state.LAST_TOOL if state.LAST_TOOL in TOOL_IDS else TOOL_BODY
+        bpy.ops.wm.tool_set_by_id(name=tool)
+        return {'FINISHED'}
+
+
+classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool, ASC_OT_rotate_hold, ASC_OT_animate)
 TOOL_HOTKEY = {"type": 'K', "value": 'PRESS', "shift": True, "alt": True}   # free in the default keymap (5.2)
 _keymaps = []
 

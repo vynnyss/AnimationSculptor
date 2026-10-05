@@ -84,6 +84,9 @@ def _upd_mode(self, context):
     scene = getattr(context, "scene", None)
     if scene is not None and self.interaction_mode == 'TRAIL':
         _provider().set_paths(scene, True)
+    provider = _provider()
+    if hasattr(provider, "engine"):
+        provider.engine.targets_changed()       # Corpo shows the character's targets, Trail the selection's
 
 
 def _upd_trails(self, context):
@@ -136,9 +139,9 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         default='BODY', update=_upd_mode,
     )
     show_rig: BoolProperty(
-        name="Ligar Rigify",
-        description="Mostrar os bones/controles do rig no viewport. Desligado, o corpo é agarrado pela malha "
-                    "e a animação continua sendo gravada nos controles",
+        name="Esqueleto",
+        description="Mostrar os bones do esqueleto (ou os controles do Rigify) no viewport. Desligado, o corpo é "
+                    "agarrado pela malha e a animação continua sendo gravada nos bones",
         default=True, update=_upd_show_rig,
     )
     onion_show: BoolProperty(
@@ -149,6 +152,11 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         name="Onion expandida",
         description="Espalha os fantasmas para os lados da tela (passado à esquerda, futuro à direita)",
         default=False, update=_sync_onion,
+    )
+    clip_negative: BoolProperty(
+        name="Cortar no frame 0",
+        description="Os gestos nunca escrevem keys antes do frame 0 (a janela da régua é cortada ali)",
+        default=True,
     )
     smooth_strength: FloatProperty(
         name="Força do Smooth", description="Quanto cada passe do pincel Smooth aproxima a curva da média",

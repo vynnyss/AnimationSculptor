@@ -33,10 +33,12 @@ class ASC_PT_main(_Base, bpy.types.Panel):
         layout = self.layout
         ob = context.active_object
         settings = getattr(context.scene, "asc_sculpt", None)
-        if ob is None or ob.type != 'ARMATURE':
-            layout.label(text="Selecione uma armature", icon='INFO')
-        elif ob.mode != 'POSE':
-            layout.label(text="Entre em Pose Mode", icon='INFO')
+        if ob is None or ob.type != 'ARMATURE' or ob.mode != 'POSE':
+            row = layout.row()
+            row.scale_y = 1.4
+            row.operator("asc.animate", text="Animar", icon='POSE_HLT')     # no clicking on the skeleton
+            if not bpy.ops.asc.animate.poll():
+                layout.label(text="Selecione o personagem", icon='INFO')
         elif not _tool_active(context):
             op = layout.operator("wm.tool_set_by_id", text="Ativar ferramenta (Shift+Alt+K)", icon='TOOL_SETTINGS')
             op.name = TOOL_ID
@@ -48,7 +50,7 @@ class ASC_PT_main(_Base, bpy.types.Panel):
         col = layout.column(align=True)
         row = col.row(align=True)
         row.prop(settings, "show_trails", text="Trails", toggle=True, icon='IPO_BEZIER')
-        row.prop(settings, "show_rig", text="Ligar Rigify", toggle=True, icon='ARMATURE_DATA')
+        row.prop(settings, "show_rig", text="Esqueleto", toggle=True, icon='ARMATURE_DATA')
         row = col.row(align=True)
         row.prop(settings, "onion_show", text="Onion skin", toggle=True, icon='ONIONSKIN_ON')
         sub = row.row(align=True)
@@ -76,6 +78,7 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
         row.prop(settings, "radius_linked", text="", icon='LINKED' if settings.radius_linked else 'UNLINKED')
         col.prop(settings, "radius_future", text="Raio futuro")
         col.prop(settings, "falloff")
+        col.prop(settings, "clip_negative")
         col.prop(settings, "show_time_ruler")
         col = layout.column(align=True)
         col.label(text="Corpo / Membro / Ponta", icon='BONE_DATA')
