@@ -37,6 +37,7 @@ O Animation Sculptor já tem o princípio ("o único estado persistente é a Act
 ### Solve (determinístico)
 
 - **2 bones (braço, perna)**: IK analítico fechado (lei dos cossenos). Plano do joelho/cotovelo = plano atual da cadeia em `f` (o pole é a pose existente), então o membro não "vira". Ponta fora de alcance ⇒ estica até o limite (sem escala). Sem iteração.
+  - **Membro quase reto (0.9.0)**: abaixo de ~6° de dobra o plano é ruído numérico e trocava de lado de um frame para o outro (num walk cycle do mantenedor o cotovelo pulava 0,5–0,7 m entre frames). Ali a dobra usa a **dobradiça** = eixo X do bone do meio (levado pela pose), com o lado lido da pose de repouso (`ephemeral_edit.rest_bend_sign`: o rig modela uma leve dobra natural; `Chain.bend_sign`). A dobra gira só a parte do segundo bone que atravessa o eixo, então o alvo continua exato. Regressão: `tests/blender/test_body_workflow.py`.
 - **Ponta (1 bone)**: rotação mínima (`rotation_difference`) que leva a direção head→tail ao alvo.
 - **Cadeias > 2 (coluna, pescoço, `Corpo`)**: mínimos quadrados amortecidos com número **fixo** de iterações, partindo da pose atual, Jacobiano analítico (`eixo × (p − junta)`), mesma entrada ⇒ mesma saída. Base de `core/solve.py`, que já estava planejado para pins.
 - **Orientação da ponta**: opção "manter orientação" `Mundo` (padrão; a mão não gira com o braço, como no grab de um IK) ou `Local`.

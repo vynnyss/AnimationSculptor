@@ -179,6 +179,15 @@ Pincel temporal:
 - **Trails no modo Corpo**: com as trails ligadas, os pontos da trail são agarráveis também no modo Corpo (o picking testa a régua, depois a trail, depois a malha); os gestos de trail são os mesmos do modo Trail.
 - **Onion expandido**: um espaçamento por **personagem** (armature que deforma as malhas), medido na caixa de todas as malhas visíveis dele: malhas separadas do mesmo esqueleto (cabeça, tronco, pernas) andam juntas.
 
+## Fluxo do modo Corpo (0.9.0, depois do walk cycle do mantenedor)
+
+- **Sem clicar no esqueleto**: no modo Corpo os alvos de trail e onion não dependem da seleção (patch P12 do LMP): as malhas do personagem (o armature ativo, o que deforma o objeto ativo ou todos os que deformam malhas visíveis) recebem o onion, e a **parte do corpo tocada por último** mostra a trail (antes de tocar: os bones selecionados, como antes). Alvos fixados (`PINNED`) e o modo Trail seguem o LMP.
+- **Botão Animar** (painel N, quando não se está em Pose Mode no personagem): entra em Pose Mode no esqueleto que deforma o objeto ativo (mesmo escondido) e ativa a última ferramenta (Corpo na primeira vez). O toggle "Ligar Rigify" passou a se chamar **Esqueleto**.
+- **Começar do zero**: o primeiro gesto num personagem sem animação cria a Action (com slot); um clique sem arrasto, um Esc ou uma recusa a removem de novo.
+- **Corte no frame 0** (`Scene.asc_sculpt.clip_negative`, ligado; Parâmetros › "Cortar no frame 0"): a janela de um gesto nunca escreve keys antes do frame 0.
+- **Smooth no membro inteiro**: o pincel suaviza a cadeia `Membro` até a parte (braço inteiro no antebraço), porque o caminho do cotovelo depende do braço de cima.
+- **Cotovelo/joelho sem saltos**: ver [ephemeral-rig](ephemeral-rig.md) ("Membro quase reto").
+
 ## Riscos e perguntas abertas
 
 - **Custo do raycast por mouse move** em malhas densas: medir; cache de `BVHTree` por pose e frame; meta < 16 ms com o realce.
@@ -186,3 +195,4 @@ Pincel temporal:
 - **Rigify com nomes diferentes** (metarigs customizados): o mapa DEF → controle cobre o metarig Human; o resto cai no genérico, sobre os bones DEF (avisar no header).
 - **Preview no modo Corpo**: a pose ao vivo exige reavaliar o rig a cada mouse move (Rigify) — medir; se passar do orçamento, mostrar só a trail prevista durante o arrasto e a pose ao soltar.
 - **Unir os modos no futuro** (decisão 1): ex. Ctrl no modo Corpo = timing da parte agarrada.
+- **Eixos do Girar** (feedback de 2026-10-04): o mantenedor achou os eixos de rotação ruins e vai propor uma forma melhor — revisitar.

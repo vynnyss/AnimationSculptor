@@ -2,11 +2,11 @@
 
 > Leia primeiro. Responde "onde estamos" para qualquer sessão/agente nova. Atualizar ao final de cada sessão significativa.
 
-**Última atualização:** 2026-10-04 — **esqueleto primeiro + Girar** (0.8.0; branch `feat/skeleton-sculpt`, um PR): esqueleto de deformação simples gerado para a malha da Vale (`dev.py basic-rig`, com dedos), Rigify em segundo plano, gesto **Girar** (ferramenta + segurar R), trails agarráveis no modo Corpo, onion expandido por personagem. Decisão: [ADR 0014](decisions/0014-skeleton-first.md). Antes (0.7.0, #19, na `main`): reforma de UX ([ADR 0013](decisions/0013-body-and-trail-interaction.md)).
+**Última atualização:** 2026-10-04 — **fluxo do modo Corpo** (0.9.0; branch `feat/body-workflow`, um PR), depois do walk cycle do mantenedor: cotovelo/joelho sem saltos entre frames, Smooth no membro inteiro, começar sem Action, corte no frame 0, onion/trail sem selecionar o esqueleto (P12), botão Animar. Antes (0.8.0, #20, na `main`): **esqueleto primeiro + Girar**: esqueleto de deformação simples gerado para a malha da Vale (`dev.py basic-rig`, com dedos), Rigify em segundo plano, gesto **Girar** (ferramenta + segurar R), trails agarráveis no modo Corpo, onion expandido por personagem. Decisão: [ADR 0014](decisions/0014-skeleton-first.md). Antes (0.7.0, #19, na `main`): reforma de UX ([ADR 0013](decisions/0013-body-and-trail-interaction.md)).
 
 ## Resumo
 
-Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Também na `main`: a matemática do rig efêmero (fase 2, #15). Também na `main`: o **gesto efêmero** no viewport (fase 3, #16) e a **fase 4** (`Corpo`, pins, arrastar o bone direto, rigidez; #17). Também na `main`: o plano da reforma de UX (#18). Também na `main`: a **reforma de UX** (#19). Nesta branch (`feat/skeleton-sculpt`): esqueleto primeiro + Girar ([ADR 0014](decisions/0014-skeleton-first.md)). Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
+Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com o LMP vendorizado (#4), spike de interação (#5, [ADR 0010](decisions/0010-tool-gizmo-modal-interaction.md) validado), ajustes do grab (#6), `core/` puro + `anim/` (#7), `rig/` + `P(f)` (#8), soft grab/arc drag/recusas (#9), retime/spacing + P9 (#10), painel/preferências/keymap/`Scene.asc_sculpt` + P8 revisado/P10 (#11) — **implementação do Escopo 1 completa**, pendente apenas o M1 do mantenedor ([critérios](#critérios-de-aceitação-do-escopo-1)) — e o plano do rig efêmero e da UI de tempo (#13, só docs). Também na `main`: a **UI de tempo** (#14). Também na `main`: a matemática do rig efêmero (fase 2, #15). Também na `main`: o **gesto efêmero** no viewport (fase 3, #16) e a **fase 4** (`Corpo`, pins, arrastar o bone direto, rigidez; #17). Também na `main`: o plano da reforma de UX (#18). Também na `main`: a **reforma de UX** (#19). Também na `main`: esqueleto primeiro + Girar (#20, [ADR 0014](decisions/0014-skeleton-first.md)). Nesta branch (`feat/body-workflow`): o fluxo do modo Corpo (0.9.0). Ordem decidida pelo mantenedor em 2026-10-04: **rig efêmero logo depois desta etapa**, antes do Escopo 2.
 
 ## O que funciona hoje
 
@@ -80,6 +80,13 @@ Na `main`: planejamento (#1), esqueleto (#2), assets de ataque (#3), trails com 
   - **Girar**: ferramenta dedicada **e** segurar R (inclusive no meio de um arrasto de Membro/Corpo); ângulo em volta da junta na tela, Shift = torção, keys densas na janela (`core/ephemeral.rotate`); ângulo 0 não escreve nada.
   - **Trails no modo Corpo**: agarráveis quando visíveis (régua → trail → malha).
   - **Onion expandido**: um espaçamento por personagem (malhas separadas do mesmo esqueleto ficam juntas; antes cabeça/tronco/pernas se separavam).
+
+- **Fluxo do modo Corpo (0.9.0, `feat/body-workflow`)** — ver [sculpt-ux](design/sculpt-ux.md) ("Fluxo do modo Corpo"):
+  - **Cotovelo fora de controle (bug do walk cycle)**: com o braço quase reto, o IK de 2 bones escolhia o lado da dobra pelo plano de cada frame (ruído) e o cotovelo pulava 0,5–0,7 m entre frames; agora a dobra segue a dobradiça do bone do meio com o lado da pose de repouso. No mesmo roteiro (7 arrastos com janela de 12 frames) o maior salto caiu para 0,13 m (o tamanho do movimento) — `test_body_workflow.py`.
+  - **Smooth** suaviza o membro inteiro até a parte (o cotovelo depende do braço de cima).
+  - **Começar do zero**: o primeiro gesto cria a Action; clique sem arrasto/Esc/recusa a removem.
+  - **Corte no frame 0** (`clip_negative`, ligado por padrão).
+  - **Sem clicar no esqueleto**: no modo Corpo o onion pega as malhas do personagem e a trail mostra a parte tocada por último, independente da seleção (patch **P12** do LMP); botão **Animar** no painel N entra em Pose Mode no personagem a partir da malha; toggle "Ligar Rigify" → **Esqueleto**.
 
 ## Parcialmente implementado
 
@@ -239,6 +246,7 @@ Os 11 critérios de [roadmap.md](roadmap.md#escopo-1--primeira-versão-utilizáv
 
 ## Próximo objetivo
 
-1. **Mantenedor**: animar com a 0.8.0 no `Vale_new_Basic_rigged.blend` (roteiro no PR) e comparar as duas formas de Girar (ferramenta × segurar R); a escolhida fica, a outra pode sair.
+1. **Mantenedor**: refazer o walk cycle com a 0.9.0 (roteiro no PR): cotovelo estável, Smooth, começar sem key, corte no 0, onion/trail sem selecionar o esqueleto.
+2. Revisitar os eixos do Girar (o mantenedor vai propor uma forma melhor) e escolher entre a ferramenta Girar e segurar R.
 2. Depois: **Escopo 2** (pipeline Godot + Loop parte 1).
 3. Futuro (decisões do mantenedor): "Simplificar" regiões densas; reinstalar o zip automaticamente; talvez unir os modos Corpo e Trail.

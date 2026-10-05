@@ -19,6 +19,7 @@ Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
 - **P8**: o resultado do native solver (`pose.paths_calculate`) é rejeitado quando todos os pontos estão na origem (falha silenciosa para bones que o solver não enxerga, ex.: controles FK numa coleção de bones oculta); só aquele bone cai para frame stepping (`(obj, bone)` em `STATE.native_failed`). Revisado no PR #11: a comparação original com o bone vivo rejeitava trails válidas quando havia pose não keyada.
 - **P10**: o frame stepping (`run_step_job`) preserva a pose não keyada dos armatures envolvidos — incluindo, desde a 0.7.0, as armatures que deformam/são pai das malhas alvo do onion skin (salva antes, devolve depois de voltar ao frame; o update dessa escrita é ignorado via `self_tagged`).
 - **P11**: gancho de desenho `draw.GHOST_OFFSET` (deslocamento por fantasma do onion, só desenho), instalado pelo `trails/provider.py` para a onion expandida.
+- **P12**: gancho de alvos `engine.TARGETS_OVERRIDE` (o host escolhe os alvos de trail/onion), instalado pelo `trails/provider.py` para o modo Corpo.
 
 `scripts/dev.py` segue a *estrutura* do BlenderAddonTemplate (subcomandos build/test, pytest dentro do Blender), com código escrito do zero. As demais linhas da tabela abaixo são o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
 
