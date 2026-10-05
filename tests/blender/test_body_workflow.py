@@ -170,3 +170,38 @@ def test_animate_enters_pose_mode_from_the_mesh(simple_rig, addon):
     with bpy.context.temp_override(window=win, area=area):
         assert bpy.ops.asc.animate() == {'FINISHED'}
     assert vl.objects.active == rig and rig.mode == 'POSE' and rig.visible_get()
+
+
+def _tail_path(rig, bone, frames):
+    out = []
+    for f in frames:
+        bpy.context.scene.frame_set(f)
+        out.append(np.array(rig.matrix_world @ rig.pose.bones[bone].tail))
+    return np.array(out)
+
+
+def test_trail_smooth_smooths_the_path_itself(simple_rig, addon):
+    """Smooth "Trail": the hand's world path is Gaussian-smoothed and the arm solved to follow it."""
+    ee = _mod(addon, "interaction.ephemeral_edit")
+    rig = simple_rig
+    rng = np.random.default_rng(11)
+    for frame in range(2, 24, 2):                                      # a jittery hand path
+        _drag(addon, rig, frame, tuple(rng.normal(scale=0.12, size=3)), radius=0)
+    frames = list(range(0, 27))
+    before = _tail_path(rig, "hand.R", frames)
+    bpy.context.scene.frame_set(12)
+    point = rig.matrix_world @ rig.pose.bones["hand.R"].tail
+    edit = ee.TrailSmoothEdit(rig, ARM_R, 12, 8, 8, point_world=tuple(point), point_bone="hand.R")
+    assert edit.editable, edit.reason
+    edit.apply_passes(20)
+    after = _tail_path(rig, "hand.R", frames)
+    inside = [i for i, f in enumerate(frames) if 6 <= f <= 18]
+    rough = lambda p: float(np.linalg.norm(np.diff(p[inside], n=2, axis=0), axis=1).mean())   # noqa: E731
+    assert rough(after) < 0.5 * rough(before)
+    outside = [i for i, f in enumerate(frames) if f < 3 or f > 21]   # beyond the window: untouched
+    assert np.abs(after[outside] - before[outside]).max() < 1e-5
+    # the hand lands on the smoothed path (the IK reaches it)
+    j = list(edit.frames).index(12)
+    assert np.linalg.norm(after[frames.index(12)] - edit._path[j]) < 1e-3
+    edit.apply_passes(0)                                               # back to the original, bit for bit
+    assert np.abs(_tail_path(rig, "hand.R", frames) - before).max() < 1e-6

@@ -502,3 +502,50 @@ class RotateEdit(ChainEdit):
 
     def finish(self):
         pass
+
+
+class TrailSmoothEdit(ChainEdit):
+    """The Smooth brush on the trail (docs/design/sculpt-ux.md "Smooth da trail"): the grabbed point's world
+    path over the window is Gaussian-smoothed (``core.smooth``, falloff weights × strength) and the limb is
+    solved at every frame so the point follows the smoothed path (ephemeral rig, per-frame target). Same
+    interface as ``smooth_edit.SmoothEdit``: ``apply_passes(n)`` from the original path, incremental."""
+
+    kind = "SMOOTH"
+    MAX_PASSES = 64
+
+    def __init__(self, ob, bones, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH", strength=0.5,
+                 sigma=1.5, point_world=None, point_bone=None):
+        self.strength, self.sigma = float(strength), float(sigma)
+        self.passes = 0
+        # WORLD: the last bone keeps its world turn, so the two-bone IK lands the point on the path exactly
+        super().__init__(ob, bones, frame, radius_past, radius_future, shape, ephemeral.WORLD, scope="LIMB",
+                         point_world=point_world, point_bone=point_bone)
+
+    def _prepare(self):
+        super()._prepare()
+        self.path0 = self.chain.tip()
+        self._path = self.path0.copy()
+        self._done = 0
+
+    def apply_passes(self, passes):
+        from ..core import smooth
+
+        passes = max(0, min(int(passes), self.MAX_PASSES))
+        if passes < self._done:
+            self._path, self._done = self.path0.copy(), 0
+        for _ in range(passes - self._done):
+            self._path = smooth.smooth_pass(self._path, self.weights, self.strength, self.sigma)
+        self._done = self.passes = passes
+        if passes == 0:
+            self.result = None
+            self.restore()
+            return
+        self.result = ephemeral.sculpt(self.chain, self.weights, np.zeros(3), self.orientation,
+                                       solver=self.solver, target=self._path)
+        self._write()
+
+    def apply(self, delta_world=None, target=None):
+        self.apply_passes(self.passes)
+
+    def finish(self):
+        pass

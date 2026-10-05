@@ -83,6 +83,7 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
         col = layout.column(align=True)
         col.label(text="Corpo / Membro / Ponta", icon='BONE_DATA')
         col.prop(settings, "tip_orientation", text="Mão/pé")
+        col.prop(settings, "smooth_mode")
         col.prop(settings, "smooth_strength")
         col.prop(settings, "smooth_sigma")
         col = layout.column(align=True)

@@ -158,6 +158,12 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         description="Os gestos nunca escrevem keys antes do frame 0 (a janela da régua é cortada ali)",
         default=True,
     )
+    smooth_mode: EnumProperty(
+        name="Suavizar",
+        items=(('TRAIL', "Trail", "Suaviza o caminho da parte no espaço (a trail) e resolve o membro para segui-lo"),
+               ('ROTATION', "Rotações", "Suaviza as curvas de rotação dos bones do membro, frame a frame")),
+        default='TRAIL',
+    )
     smooth_strength: FloatProperty(
         name="Força do Smooth", description="Quanto cada passe do pincel Smooth aproxima a curva da média",
         default=0.5, min=0.0, max=1.0, subtype='FACTOR',

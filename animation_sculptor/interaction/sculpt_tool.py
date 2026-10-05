@@ -342,11 +342,28 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     def _grab_point(self):
         return Vector(self.point) if self.use_point else getattr(self, "_point", None)
 
-    def _begin_smooth(self, ob, obj_name, bones, frame, radii):
+    def _begin_smooth(self, ob, obj_name, bones, frame, radii, point=None):
         settings = _settings()
         for name in bones:
             if ob.pose.bones.get(name) is None:
                 return "controle não encontrado"
+        part = bones[-1]
+        info = rig.get_adapter(ob).classify(ob, part)
+        if (settings is None or settings.smooth_mode == 'TRAIL') and info is not None and info.rotates                 and not info.translates and not ephemeral_edit.refusal(ob, bones):
+            # smooth the trail itself: the part's world path, the limb solved to follow it. A translating
+            # control's location curve already is its trail (the rotation branch below smooths it)
+            if bpy.context.scene.frame_current != frame:
+                bpy.context.scene.frame_set(frame)
+            if point is None:
+                point = ob.matrix_world @ ob.pose.bones[part].tail
+            self.edit = ephemeral_edit.TrailSmoothEdit(
+                ob, bones, frame, radii[0], radii[1], settings.falloff if settings is not None else "SMOOTH",
+                settings.smooth_strength if settings is not None else 0.5,
+                settings.smooth_sigma if settings is not None else 1.5,
+                point_world=tuple(point), point_bone=part)
+            if self.edit.editable:
+                self.obj_name, self.bone, self.frame = obj_name, part, frame
+                return ""
         self.edit = smooth_edit.SmoothEdit(ob, bones, frame, radii[0], radii[1],
                                            settings.falloff if settings is not None else "SMOOTH",
                                            settings.smooth_strength if settings is not None else 0.5,
@@ -412,7 +429,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                 return {'CANCELLED'}
             radii = (self.radius if self.radius_past < 0 else self.radius_past,
                      self.radius if self.radius_future < 0 else self.radius_future)
-            reason = self._begin_smooth(ob, self.obj_name, [self.bone], self.frame, radii)
+            bones, why = rig.get_adapter(ob).ephemeral_chain(ob, self.bone, "LIMB")
+            reason = self._begin_smooth(ob, self.obj_name, bones if bones and not why else [self.bone], self.frame,
+                                        radii, point=Vector(self.point) if self.use_point else None)
             if reason:
                 self.report({'WARNING'}, f"Animation Sculptor: {reason}")
                 return {'CANCELLED'}
@@ -657,7 +676,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         bones, why = rig.get_adapter(ob).ephemeral_chain(ob, hit.bone, "LIMB")
         if why or not bones:
             bones = [hit.bone]
-        reason = self._begin_smooth(ob, hit.obj_name, bones, hit.frame, radii)
+        reason = self._begin_smooth(ob, hit.obj_name, bones, hit.frame, radii, point=Vector(hit.world))
         if reason:
             return self._refuse(context, hit, reason)
         self.origin = Vector(hit.world)
@@ -1072,6 +1091,7 @@ def _draw_settings(context, layout, tool):
     row.prop(s, "radius_future", text="Futuro")
     layout.prop(s, "falloff", text="")
     if tool is not None and tool.idname == TOOL_SMOOTH:
+        layout.prop(s, "smooth_mode", text="")
         layout.prop(s, "smooth_strength", text="Força")
     elif tool is not None and tool.idname in (TOOL_ID, TOOL_BODY):
         layout.prop(s, "tip_orientation", text="")

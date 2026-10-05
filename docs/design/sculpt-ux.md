@@ -186,6 +186,7 @@ Pincel temporal:
 - **Começar do zero**: o primeiro gesto num personagem sem animação cria a Action (com slot); um clique sem arrasto, um Esc ou uma recusa a removem de novo.
 - **Corte no frame 0** (`Scene.asc_sculpt.clip_negative`, ligado; Parâmetros › "Cortar no frame 0"): a janela de um gesto nunca escreve keys antes do frame 0.
 - **Smooth no membro inteiro**: o pincel suaviza a cadeia `Membro` até a parte (braço inteiro no antebraço), porque o caminho do cotovelo depende do braço de cima.
+- **Smooth da trail** (padrão; barra da ferramenta e Parâmetros › Suavizar: **Trail** | Rotações): o caminho do ponto agarrado no mundo (a trail) é suavizado com o mesmo filtro gaussiano (falloff da régua × força) e o membro é resolvido em cada frame para o ponto seguir o caminho suavizado (rig efêmero com alvo por frame; a mão mantém a orientação no mundo, então o alvo é exato). Rotações = o Smooth anterior (curvas de rotação frame a frame). Controles que transladam (hips, IK do Rigify) usam sempre a suavização das curvas, que já é a trail deles. `ephemeral_edit.TrailSmoothEdit`.
 - **Cotovelo/joelho sem saltos**: ver [ephemeral-rig](ephemeral-rig.md) ("Membro quase reto").
 
 ## Riscos e perguntas abertas
