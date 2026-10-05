@@ -175,19 +175,32 @@ def body_characters(view_layer):
 
 
 def _body_targets(scene, view_layer):
-    """TARGETS_OVERRIDE hook: Corpo mode only (None in the Trail mode = the LMP selection modes)."""
+    """TARGETS_OVERRIDE hook. Corpo: the trail of the part last touched (else the selected bones). Trail: the
+    part last clicked on the body (it picks the trail to edit) plus the selected bones. Both: the onion on the
+    character's meshes. None = the LMP's own modes (pinned targets, no character)."""
     settings = getattr(scene, "asc_sculpt", None)
     trails = getattr(scene, "asc_trails", None)
-    if settings is None or settings.interaction_mode != 'BODY' or trails is None or trails.target_mode == 'PINNED':
+    if settings is None or trails is None or trails.target_mode == 'PINNED':
         return None                     # pinned targets are an explicit choice of the user: kept
+    trail_mode = settings.interaction_mode == 'TRAIL'
     arms = body_characters(view_layer)
     if not arms:
         return None
     items, sig = [], []
     for arm in arms:
+        if settings.trail_all:          # every part of the character (its controls), whatever is selected
+            from .. import rig as rig_adapters
+
+            bones = [info.name for info in rig_adapters.get_adapter(arm).controls(arm)
+                     if not arm.pose.bones[info.name].bone.hide]
+            items += [(arm, bone, True, False) for bone in bones]
+            meshes = engine.deformed_meshes(arm)
+            items += [(m, None, False, True) for m in meshes]
+            sig.append((arm.name, "ALL", tuple(m.name for m in meshes)))
+            continue
         bones = [FOCUS[arm.name]] if arm.pose.bones.get(FOCUS.get(arm.name) or "") is not None else []
-        if not bones and arm.mode == 'POSE':        # nothing touched yet: the selected bones, as before
-            bones = [pb.name for pb in arm.pose.bones if pb.select and not pb.bone.hide]
+        if (trail_mode or not bones) and arm.mode == 'POSE':    # the selected bones too (Corpo: until touched)
+            bones += [pb.name for pb in arm.pose.bones if pb.select and not pb.bone.hide and pb.name not in bones]
         items += [(arm, bone, True, False) for bone in bones]
         meshes = engine.deformed_meshes(arm)
         items += [(m, None, False, True) for m in meshes]

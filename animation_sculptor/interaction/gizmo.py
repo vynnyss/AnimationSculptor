@@ -83,6 +83,10 @@ def _header(context, hit):
     if hit is None:
         area.header_text_set(None)
         return
+    if hit.on_body and _mode(bpy.context) != 'BODY':
+        area.header_text_set(f"Animation Sculptor · {hit.deform} → {hit.bone}   "
+                             "LMB: mostrar a trail desta parte (depois arraste a trail)")
+        return
     if hit.on_body:
         if hit.reason:
             area.header_text_set(f"Animation Sculptor · {hit.deform} · {hit.reason}")
@@ -140,6 +144,8 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
             hit = None
             if _mode(context) != 'BODY':
                 hit = picking.hit_test(context.region, context.region_data, location, candidate_keys(context))
+                if hit is None:     # the body only picks which part's trail is shown (a click edits nothing)
+                    hit = body_hit(context, location)
             else:
                 # the tail of a selected bone (when the skeleton is shown) wins over the body under it
                 from ..ui import props

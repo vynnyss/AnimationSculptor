@@ -199,6 +199,10 @@ Pincel temporal:
 - **Modos separados**:
   - **Corpo** agarra só o corpo, ou a ponta de um bone selecionado quando o toggle Esqueleto está ligado. As trails ficam só para ver.
   - **Trail** agarra só os pontos da trail (grab, arco, Ctrl = timing).
+- **Qual trail editar no modo Trail** (relato de 2026-10-05: sem bones selecionados não havia trail para agarrar):
+  - **Clique no corpo:** só escolhe a parte cuja trail aparece. Não edita nada e não cria passo de undo. Depois é só arrastar a trail.
+  - **Seleção:** as trails dos bones selecionados também aparecem.
+  - **Toggle Todas** (painel N, ao lado de Trails): as trails de **todas** as partes do personagem, independente da seleção, todas editáveis no modo Trail. Um clique numa parte do corpo volta para a trail só dela.
 - **Limites do pose a pose:** os pinos (pés no Corpo) e o ponto da pele são exatos nas poses; entre elas vale a interpolação do Blender.
 
 ## Riscos e perguntas abertas

@@ -50,6 +50,9 @@ class ASC_PT_main(_Base, bpy.types.Panel):
         col = layout.column(align=True)
         row = col.row(align=True)
         row.prop(settings, "show_trails", text="Trails", toggle=True, icon='IPO_BEZIER')
+        sub = row.row(align=True)
+        sub.active = settings.show_trails
+        sub.prop(settings, "trail_all", text="Todas", toggle=True, icon='ZOOM_ALL')
         row.prop(settings, "show_rig", text="Esqueleto", toggle=True, icon='ARMATURE_DATA')
         row = col.row(align=True)
         row.prop(settings, "onion_show", text="Onion skin", toggle=True, icon='ONIONSKIN_ON')

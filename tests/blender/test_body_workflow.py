@@ -145,8 +145,20 @@ def test_body_mode_targets_ignore_the_selection(simple_rig, addon):
     sig = engine.selection_signature(scene, vl)
     provider.focus_part(rig, "hand.R")
     assert engine.selection_signature(scene, vl) != sig                # a new part re-targets
-    scene.asc_sculpt.interaction_mode = 'TRAIL'
-    assert provider._body_targets(scene, vl) is None                   # Trail mode: the LMP selection modes
+    scene.asc_sculpt.interaction_mode = 'TRAIL'                        # Trail: the part picked + selected bones
+    rig.pose.bones["thigh.L"].select = True
+    bpy.context.view_layer.objects.active = rig
+    if rig.mode != 'POSE':
+        bpy.ops.object.mode_set(mode='POSE')
+    keys = {(t.obj_name, t.bone or "") for t in engine.resolve_targets(scene, vl)}
+    assert {(rig.name, "hand.R"), (rig.name, "thigh.L")} <= keys
+    scene.asc_sculpt.trail_all = True                                  # Todas: every part
+    keys = {t.bone for t in engine.resolve_targets(scene, vl) if t.bone}
+    assert {"hips", "head", "foot.R", "index.02.L"} <= keys
+    scene.asc_sculpt.trail_all = False
+    s.target_mode = 'PINNED'
+    assert provider._body_targets(scene, vl) is None                   # pinned: the user's explicit choice
+    s.target_mode = 'SELECTED'
     provider.FOCUS.clear()
 
 

@@ -484,6 +484,14 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         settings = _settings()
         radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
         ob = bpy.data.objects.get(hit.obj_name)
+        if hit.on_body and settings is not None and settings.interaction_mode == 'TRAIL':
+            # Trail mode: a click on the body only picks the part whose trail is shown and edited
+            if ob is not None:
+                provider.focus_part(ob, hit.bone)
+                if settings.trail_all:
+                    settings.trail_all = False      # from the overview to this part's trail (toggle back: all)
+                state.MESSAGE = f"trail de {hit.bone}"
+            return {'CANCELLED'}
         if hit.on_body and ob is not None:
             provider.focus_part(ob, hit.bone)          # the Corpo mode shows the trail of the part touched
             if tool != TOOL_SMOOTH:

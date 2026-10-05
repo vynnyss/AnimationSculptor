@@ -95,6 +95,12 @@ def _upd_trails(self, context):
         _provider().set_paths(scene, self.show_trails)
 
 
+def _upd_retarget(self, _context):
+    provider = _provider()
+    if hasattr(provider, "engine"):
+        provider.engine.targets_changed()
+
+
 def _upd_linked(self, _context):
     if self.radius_linked and self.radius_future != self.radius_past:
         self.radius_future = self.radius_past
@@ -131,6 +137,12 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
     show_trails: BoolProperty(
         name="Trails", description="Mostrar as trajetórias (trails) dos controles selecionados",
         default=True, update=_upd_trails,
+    )
+    trail_all: BoolProperty(
+        name="Todas as trails",
+        description="Mostrar as trails de todas as partes do personagem (no modo Trail, todas podem ser editadas). "
+                    "Desligado: só a da parte do corpo tocada por último",
+        default=False, update=_upd_retarget,
     )
     interaction_mode: EnumProperty(
         name="Modo",
