@@ -103,7 +103,7 @@ class SmoothEdit:
     def apply(self, _delta=None):
         self.apply_passes(self.passes)
 
-    def prefetch(self, frames):
+    def prefetch(self, frames, trail=None):
         pass
 
     def preview(self):

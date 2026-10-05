@@ -274,11 +274,13 @@ class ChainEdit:
             action_io.write_channel(fc, model)
         action_io.tag(self.ob)
 
-    def prefetch(self, frames):
-        """The trail of the dragged control (its tail) as cached when the gesture started."""
+    def prefetch(self, frames, trail=None):
+        """The trail of the dragged control (its tail) as cached when the gesture started (``trail``: taken
+        before the window was sampled — the frame stepping can drop the engine's cache)."""
         from ..trails import provider
 
-        trail = provider.get_trail(self.ob, self.bone)
+        if trail is None:
+            trail = provider.get_trail(self.ob, self.bone)
         if trail is None or self.reason:
             return
         # only a trail of the tail matches the dragged point (a translation control's trail follows its head)

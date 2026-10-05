@@ -354,8 +354,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             # control's location curve already is its trail (the rotation branch below smooths it)
             if bpy.context.scene.frame_current != frame:
                 bpy.context.scene.frame_set(frame)
-            if point is None:
-                point = ob.matrix_world @ ob.pose.bones[part].tail
+            # the point is the one the trail on screen follows (the part's tail), so the trail itself is what
+            # gets smoothed — and it can be drawn live over the cached one
+            point = ob.matrix_world @ ob.pose.bones[part].tail
             self.edit = ephemeral_edit.TrailSmoothEdit(
                 ob, bones, frame, radii[0], radii[1], settings.falloff if settings is not None else "SMOOTH",
                 settings.smooth_strength if settings is not None else 0.5,
@@ -676,9 +677,11 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         bones, why = rig.get_adapter(ob).ephemeral_chain(ob, hit.bone, "LIMB")
         if why or not bones:
             bones = [hit.bone]
+        trail = provider.get_trail(ob, bones[-1])     # before the window is sampled (it can drop the cache)
         reason = self._begin_smooth(ob, hit.obj_name, bones, hit.frame, radii, point=Vector(hit.world))
         if reason:
             return self._refuse(context, hit, reason)
+        self.edit.prefetch([], trail=trail)     # the cached trail: the live preview splices the smoothed part in
         self.origin = Vector(hit.world)
         self.last_mouse = (event.mouse_region_x, event.mouse_region_y)
         self.accum = Vector((0.0, 0.0, 0.0))
@@ -701,7 +704,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         passes = smooth.passes_for_drag(self.stroke)
         if passes != self.edit.passes:
             self.edit.apply_passes(passes)
-            state.GESTURE["label"] = f"smooth ×{passes}"
+            state.GESTURE["label"] = f"smooth ×{self.edit.passes}"       # capped at MAX_PASSES
+            state.GESTURE["preview"] = self.edit.preview() or None     # the trail being smoothed, live
         self._header(context)
         context.area.tag_redraw()
 
