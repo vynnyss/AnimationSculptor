@@ -158,6 +158,19 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         description="Os gestos nunca escrevem keys antes do frame 0 (a janela da régua é cortada ali)",
         default=True,
     )
+    key_mode: EnumProperty(
+        name="Keys",
+        items=(('POSE', "Pose a pose", "Arrastar muda a pose do frame atual (uma key por canal ali); as poses "
+                                        "vizinhas na janela mudam só um pouco (Influência nas poses)"),
+               ('DENSE', "Densas", "Arrastar grava uma key por frame em toda a janela da régua (rig efêmero)")),
+        default='POSE',
+    )
+    pose_influence: FloatProperty(
+        name="Influência nas poses",
+        description="Quanto as poses-chave vizinhas (dentro da janela da régua) acompanham um arrasto feito em "
+                    "outro frame (0 = travadas)",
+        default=0.25, min=0.0, max=1.0, subtype='FACTOR',
+    )
     smooth_mode: EnumProperty(
         name="Suavizar",
         items=(('TRAIL', "Trail", "Suaviza o caminho da parte no espaço (a trail) e resolve o membro para segui-lo"),

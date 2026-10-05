@@ -29,11 +29,6 @@ def _mode(context):
     return settings.interaction_mode if settings is not None else 'TRAIL'
 
 
-def _paths_visible(context):
-    s = provider.settings(context.scene)
-    return bool(s is not None and s.enabled and s.path_show)
-
-
 def body_hit(context, location):
     """Modo Corpo: the body spot under the mouse, mapped to the control that moves it (ADR 0013)."""
     ob = context.active_object
@@ -92,7 +87,12 @@ def _header(context, hit):
         if hit.reason:
             area.header_text_set(f"Animation Sculptor · {hit.deform} · {hit.reason}")
             return
-        what = "grab/arco do controle IK" if hit.kind == "IK" else "gira a cadeia (keys em todo frame da janela)"
+        from ..ui import props
+
+        settings = props.get(bpy.context)
+        dense = settings is not None and settings.key_mode == 'DENSE'
+        what = "grab/arco do controle IK" if hit.kind == "IK" else (
+            "gira a cadeia (keys em todo frame da janela)" if dense else "gira a cadeia (pose neste frame)")
         area.header_text_set(f"Animation Sculptor · {hit.deform} → {hit.bone} · frame {hit.frame}   "
                              f"LMB arrastar: {what}")
         return
@@ -135,15 +135,21 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
                 "LMB arrastar: mudar · Shift: os dois lados")
             return 0
         try:
+            # each mode grabs only its own thing (decision of 2026-10-05): Trail → the trail's points; Corpo →
+            # the body (the trails are only shown), or the tail of a selected bone
             hit = None
-            if _mode(context) != 'BODY' or _paths_visible(context):
+            if _mode(context) != 'BODY':
                 hit = picking.hit_test(context.region, context.region_data, location, candidate_keys(context))
-            if hit is None and _mode(context) == 'BODY':
-                hit = body_hit(context, location)
-            if hit is None:     # nothing else: the tail of a selected bone the ephemeral gesture can turn
-                ob = context.active_object
-                hit = picking.bone_tip_hit(context.region, context.region_data, location, ob,
-                                           draggable_bones(context), context.scene.frame_current)
+            else:
+                # the tail of a selected bone (when the skeleton is shown) wins over the body under it
+                from ..ui import props
+
+                settings = props.get(context)
+                if settings is None or settings.show_rig:
+                    hit = picking.bone_tip_hit(context.region, context.region_data, location, context.active_object,
+                                               draggable_bones(context), context.scene.frame_current)
+                if hit is None:
+                    hit = body_hit(context, location)
         except Exception as exc:  # never break the viewport event loop
             print(f"[Animation Sculptor] picking failed: {exc}")
             hit = None

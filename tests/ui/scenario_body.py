@@ -30,7 +30,8 @@ def scenario(h):
     else:
         path, fk_side, f0 = os.environ["ASC_UI_RIG"], "R", 12
     bpy.ops.wm.open_mainfile(filepath=path, load_ui=False)
-    bpy.context.scene.asc_sculpt.interaction_mode = 'TRAIL'     # trail gestures (ADR 0013: Corpo is the default)
+    bpy.context.scene.asc_sculpt.interaction_mode = 'BODY'      # dragging a bone's tail is a body gesture
+    bpy.context.scene.asc_sculpt.key_mode = 'DENSE'             # this scenario checks dense keys (ADR 0011)
     yield 0.5
     provider = h.addon("trails.provider")
     picking = h.addon("interaction.picking")
@@ -52,6 +53,7 @@ def scenario(h):
     s.radius_linked = False
     s.radius_past, s.radius_future = 4.0, 4.0
     s.ephemeral_scope = 'LIMB'
+    s.show_rig = True             # bone tails are grabbed when the skeleton is shown
     area, region, rv3d = h.view3d()
     target = Vector((0.0, -0.2, 1.2))
     eye = Vector((-2.6, -3.0, 1.6))

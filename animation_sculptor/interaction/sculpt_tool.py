@@ -401,7 +401,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                                              scope=scope, pins=pins, point_world=point,
                                              point_bone=bone if point is not None else None, aim_bones=aim,
                                              point_deform=getattr(self, "_deform", None),
-                                             point_skin=getattr(self, "_skin", None))
+                                             point_skin=getattr(self, "_skin", None), **_key_mode())
         state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
         if self.edit.reason:
             return self.edit.reason
@@ -547,7 +547,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         toward_viewer = Vector(axis)
         self.edit = ephemeral_edit.RotateEdit(ob, bone, frame, radii[0], radii[1],
                                               settings.falloff if settings is not None else "SMOOTH",
-                                              view_axis=tuple(toward_viewer))
+                                              view_axis=tuple(toward_viewer), **_key_mode())
         if not self.edit.editable:
             return self.edit.reason or "sem canais de rotação"
         self.obj_name, self.bone, self.frame = ob.name, bone, frame
@@ -847,7 +847,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             pinned = f" · pés presos: {len(e.pins)}" if e.pins else ""
             name = "Corpo" if e.scope == rig.BODY else "Cadeia FK"
             head = (f"{name} {' → '.join(e.bones)}{pinned} @ {self.frame}   {delta}   janela {span} "
-                    f"(←{e.radius_past:g} · {e.radius_future:g}→) · keys em todo frame · roda/[ ]: raio")
+                    f"(←{e.radius_past:g} · {e.radius_future:g}→) · "
+                    f"{'keys em todo frame' if e.key_mode == ephemeral_edit.DENSE else 'pose a pose'} · roda/[ ]: raio")
             if e.result is not None and not e.result.reached[e.frames == self.frame].all():
                 head += " · fora de alcance"
             if e.result is not None and e.result.pins_reached is not None and not e.result.pins_reached.all():
@@ -1084,6 +1085,14 @@ class ASC_OT_time_window(bpy.types.Operator):
         context.area.tag_redraw()
 
 
+def _key_mode():
+    """The gesture's key mode from the scene (ADR 0015): pose to pose (default) or dense."""
+    settings = _settings()
+    if settings is None:
+        return {"key_mode": ephemeral_edit.POSE, "pose_influence": 0.25}
+    return {"key_mode": settings.key_mode, "pose_influence": settings.pose_influence}
+
+
 def _draw_settings(context, layout, tool):
     """Tool settings bar (top of the viewport, View › Tool Settings): the gesture window."""
     s = props.get(context)
@@ -1097,7 +1106,11 @@ def _draw_settings(context, layout, tool):
     if tool is not None and tool.idname == TOOL_SMOOTH:
         layout.prop(s, "smooth_mode", text="")
         layout.prop(s, "smooth_strength", text="Força")
-    elif tool is not None and tool.idname in (TOOL_ID, TOOL_BODY):
+    else:
+        layout.prop(s, "key_mode", text="")
+        if s.key_mode == 'POSE':
+            layout.prop(s, "pose_influence", text="Poses")
+    if tool is not None and tool.idname in (TOOL_ID, TOOL_BODY):
         layout.prop(s, "tip_orientation", text="")
 
 
@@ -1113,6 +1126,7 @@ class _SculptTool:
         ("view3d.select", {"type": 'LEFTMOUSE', "value": 'CLICK', "shift": True}, {"properties": [("toggle", True)]}),
         ("view3d.select_box", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'}, None),
         ("asc.rotate_hold", {"type": 'R', "value": 'PRESS'}, None),      # hold R + drag: turn the part
+        ("asc.key_pose", {"type": 'I', "value": 'PRESS'}, None),         # I: key the whole pose (ADR 0015)
     )
     draw_settings = staticmethod(_draw_settings)
 
@@ -1120,8 +1134,8 @@ class _SculptTool:
 class ASC_WT_tip(_SculptTool, bpy.types.WorkSpaceTool):
     bl_idname = TOOL_TIP
     bl_label = "Ponta"
-    bl_description = ("Arraste uma parte do corpo: só aquela parte gira para seguir o mouse (keys em todo frame "
-                      "da janela da régua). Num membro em IK, move o controle IK")
+    bl_description = ("Arraste uma parte do corpo: só aquela parte gira para seguir o mouse (pose a pose, ou keys "
+                      "densas na janela da régua). Num membro em IK, move o controle IK. I: gravar a pose")
     bl_icon = "ops.pose.relax"
 
 
@@ -1195,6 +1209,33 @@ class ASC_OT_activate_tool(bpy.types.Operator):
         return bpy.ops.wm.tool_set_by_id(name=tool)
 
 
+class ASC_OT_key_pose(bpy.types.Operator):
+    """Grava a pose do personagem inteiro neste frame (uma pose-chave), sem precisar selecionar bones"""
+    bl_idname = "asc.key_pose"
+    bl_label = "Gravar pose"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and ob.type == 'ARMATURE'
+
+    def execute(self, context):
+        ob = context.active_object
+        frame = context.scene.frame_current
+        count = 0
+        for info in rig.get_adapter(ob).controls(ob):
+            pb = ob.pose.bones[info.name]
+            channel, _size = spaces.rotation_channel(pb)
+            if info.rotates:
+                count += bool(pb.keyframe_insert(channel, frame=frame, group=pb.name))
+            if info.translates:
+                count += bool(pb.keyframe_insert("location", frame=frame, group=pb.name))
+        action_io.tag(ob)
+        self.report({'INFO'}, f"Animation Sculptor: pose gravada no frame {frame} ({count} canais)")
+        return {'FINISHED'}
+
+
 class ASC_OT_animate(bpy.types.Operator):
     """Animar o personagem: entra em Pose Mode no esqueleto que deforma o objeto ativo (ou o único da cena)
     e ativa a ferramenta, sem precisar clicar no esqueleto"""
@@ -1228,7 +1269,8 @@ class ASC_OT_animate(bpy.types.Operator):
         return {'FINISHED'}
 
 
-classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool, ASC_OT_rotate_hold, ASC_OT_animate)
+classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool, ASC_OT_rotate_hold, ASC_OT_animate,
+           ASC_OT_key_pose)
 TOOL_HOTKEY = {"type": 'K', "value": 'PRESS', "shift": True, "alt": True}   # free in the default keymap (5.2)
 _keymaps = []
 

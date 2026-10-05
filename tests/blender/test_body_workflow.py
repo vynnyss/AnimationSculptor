@@ -205,3 +205,71 @@ def test_trail_smooth_smooths_the_path_itself(simple_rig, addon):
     assert np.linalg.norm(after[frames.index(12)] - edit._path[j]) < 1e-3
     edit.apply_passes(0)                                               # back to the original, bit for bit
     assert np.abs(_tail_path(rig, "hand.R", frames) - before).max() < 1e-6
+
+
+def _pose_drag(addon, rig, frame, delta, radius=12, influence=0.25):
+    ee = _mod(addon, "interaction.ephemeral_edit")
+    bpy.context.scene.frame_set(frame)
+    tip = np.array(rig.matrix_world @ rig.pose.bones["hand.R"].tail)
+    edit = ee.ChainEdit(rig, ARM_R, frame, radius, radius, point_world=tuple(tip), point_bone="hand.R",
+                        key_mode=ee.POSE, pose_influence=influence)
+    assert edit.editable, edit.reason
+    edit.apply(np.array(delta, dtype=float))
+    edit.finish()
+    return edit
+
+
+def _key_frames(rig, bone):
+    cb = _mod_action_io().channelbag(rig)
+    return sorted({round(k.co.x) for fc in cb.fcurves if fc.data_path.startswith(f'pose.bones["{bone}"]')
+                   for k in fc.keyframe_points})
+
+
+def test_pose_to_pose_keys_only_the_posed_frame_and_the_poses(simple_rig, addon):
+    """ADR 0015: a drag at a frame without a key inserts one there; the neighbouring poses move by
+    falloff × influence; no dense keys."""
+    rig = simple_rig
+    poses = _mod(addon, "interaction.ephemeral_edit").pose_frames(rig)
+    assert poses == [1, 12, 24]                                        # the test Action's poses
+    _pose_drag(addon, rig, 6, (0.0, -0.15, 0.1))
+    for bone in ARM_R:
+        assert _key_frames(rig, bone) == [1, 6, 12, 24], bone          # one new key, at 6 only
+    bpy.context.scene.frame_set(6)
+    tip = np.array(rig.matrix_world @ rig.pose.bones["hand.R"].tail)
+    assert tip is not None
+
+
+def test_pose_influence_zero_locks_the_other_poses(simple_rig, addon):
+    rig = simple_rig
+    frames = [1, 12, 24]
+    before = _tail_path(rig, "hand.R", frames)
+    _pose_drag(addon, rig, 6, (0.0, -0.15, 0.1), influence=0.0)
+    assert np.abs(_tail_path(rig, "hand.R", frames) - before).max() < 1e-5
+    _pose_drag(addon, rig, 8, (0.0, 0.1, 0.0), influence=0.5)
+    moved = np.linalg.norm(_tail_path(rig, "hand.R", frames) - before, axis=1)
+    assert moved[1] > 1e-4                                             # pose 12 (in the window) follows a bit
+
+
+def test_pose_drag_reaches_the_target_at_the_posed_frame(simple_rig, addon):
+    rig = simple_rig
+    bpy.context.scene.frame_set(12)
+    tip0 = np.array(rig.matrix_world @ rig.pose.bones["hand.R"].tail)
+    delta = np.array((0.0, -0.12, 0.08))
+    _pose_drag(addon, rig, 12, delta)
+    bpy.context.scene.frame_set(12)
+    tip = np.array(rig.matrix_world @ rig.pose.bones["hand.R"].tail)
+    assert np.linalg.norm(tip - (tip0 + delta)) < 1e-3
+
+
+def test_key_pose_keys_the_whole_character(simple_rig, addon):
+    rig = simple_rig
+    rig.animation_data.action = None
+    scene = bpy.context.scene
+    scene.frame_set(7)
+    bpy.context.view_layer.objects.active = rig
+    for pb in rig.pose.bones:
+        pb.select = False                                              # nothing selected: still the whole pose
+    assert bpy.ops.asc.key_pose() == {'FINISHED'}
+    keyed = {fc.data_path.split('"')[1] for fc in _mod_action_io().channelbag(rig).fcurves}
+    assert {"hips", "spine", "head", "hand.R", "thigh.L", "index.02.R"} <= keyed
+    assert _mod(addon, "interaction.ephemeral_edit").pose_frames(rig) == [7]

@@ -79,6 +79,8 @@ class ASC_PT_tool(_Base, bpy.types.Panel):
         col.prop(settings, "radius_future", text="Raio futuro")
         col.prop(settings, "falloff")
         col.prop(settings, "clip_negative")
+        col.prop(settings, "key_mode")
+        col.prop(settings, "pose_influence")
         col.prop(settings, "show_time_ruler")
         col = layout.column(align=True)
         col.label(text="Corpo / Membro / Ponta", icon='BONE_DATA')
