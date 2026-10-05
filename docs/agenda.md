@@ -36,7 +36,7 @@
 
 18. **[mergeado — PR #20] Esqueleto primeiro + Girar (0.8.0)**, [ADR 0014](decisions/0014-skeleton-first.md): esqueleto simples com dedos para a malha da Vale (`dev.py basic-rig` → `Vale_new_Basic_rigged.blend`), gesto Girar (ferramenta + segurar R), trails agarráveis no modo Corpo, onion expandido por personagem. *Resultado: unit 586, blender 199, ui 169.*
 
-19. **[em revisão — PR `feat/body-workflow`] Fluxo do modo Corpo (0.9.0)** (feedback do walk cycle): cotovelo/joelho sem saltos (dobradiça com o lado da pose de repouso no IK de 2 bones), Smooth no membro inteiro, começar sem Action, corte no frame 0, onion/trail sem selecionar o esqueleto (P12), botão Animar.
+19. **[em revisão — PR `feat/body-workflow`] Fluxo do modo Corpo (0.9.0)** (feedback do walk cycle): cotovelo/joelho sem saltos (dobradiça com o lado da pose de repouso no IK de 2 bones), Smooth no membro inteiro, começar sem Action, corte no frame 0, onion/trail sem selecionar o esqueleto (P12), botão Animar. *Resultado: unit 586, blender 207, ui 191.*
 
 > Estado dos PRs: #1–#11 e #13–#20 estão na `main`; o fluxo do modo Corpo está em revisão.
 
