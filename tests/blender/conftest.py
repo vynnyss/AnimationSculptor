@@ -50,3 +50,32 @@ def attack_rig():
     bpy.ops.wm.open_mainfile(filepath=str(ATTACK_ASSET), load_ui=False)
     scene = bpy.context.scene
     return bpy.data.objects[scene["asc_asset_rig"]]
+
+
+@pytest.fixture
+def simple_rig():
+    """The simple skeleton of ADR 0014 (same bones as scripts/make_basic_rig.py, unsnapped) on a skinned test
+    body, with the small test Action — CI-friendly stand-in for the local Vale (``basic_rig``)."""
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    import make_basic_rig
+    import body_mesh
+
+    bpy.ops.wm.read_homefile(use_empty=True)
+    scene = bpy.context.scene
+    rig = make_basic_rig.create_rig(scene, make_basic_rig.bone_table())
+    body_mesh.add_skinned_body(rig)
+    make_basic_rig.add_test_action(rig, scene)
+    bpy.context.view_layer.objects.active = rig
+    return rig
+
+
+BASIC_ASSET = Path(os.environ.get("ASC_BASIC_ASSET", REPO_ROOT / "tests" / "assets" / "local" / "basic_rig_test.blend"))
+
+
+@pytest.fixture
+def basic_rig():
+    """The maintainer's Vale on the simple skeleton (local: ``python scripts/dev.py basic-rig``)."""
+    if not BASIC_ASSET.exists():
+        pytest.skip(f"{BASIC_ASSET.name} not generated (python scripts/dev.py basic-rig)")
+    bpy.ops.wm.open_mainfile(filepath=str(BASIC_ASSET), load_ui=False)
+    return bpy.data.objects[bpy.context.scene["asc_asset_rig"]]

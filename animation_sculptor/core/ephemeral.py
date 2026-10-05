@@ -275,3 +275,30 @@ def sculpt(chain: Chain, weights, delta, orientation=WORLD, bend_axis=None, solv
         pins_reached &= ok
     return Result(rot=new_rot, tip=tip, target=target, reached=reached, pins=[r for r, _ok in solved],
                   pins_reached=pins_reached)
+
+
+def rotate(chain: Chain, weights, axis, angle, bone=-1) -> Result:
+    """Turn one bone of the chain (default: the last) about a world ``axis`` through its head by ``w(f)·angle``
+    at every frame (the "Girar" gesture, ADR 0014). ``axis`` (3,) or per frame (N, 3) — e.g. the view
+    direction (trackball) or the bone's own Y axis (twist). Children follow (FK); weight 0 ⇒ bit-identical.
+    Returns a Result whose ``tip`` is the dragged point after the turn (target = tip: always reached)."""
+    reason = check(chain)
+    if reason:
+        raise ValueError(reason)
+    weights = np.asarray(weights, dtype=np.float64)
+    n = chain.frame_count
+    i = bone % chain.bone_count
+    axes = kin.normalize(np.broadcast_to(np.asarray(axis, dtype=np.float64), (n, 3)))
+    active = weights > 0.0
+    rot3 = chain.rotation_matrices()
+    world = chain.world(rot3)
+    delta = kin.axis_angle_to_mat3(axes, weights * float(angle))
+    r = kin.local_rotation_update(_frames_rot(chain, world, i), delta, rot3[:, i])
+    new_rot = [np.asarray(v, dtype=np.float64) for v in chain.rot]
+    locks = None if chain.lock_rotation is None else np.asarray(chain.lock_rotation)[i]
+    new_rot[i] = _native(r, new_rot[i], chain.modes[i], locks, active)
+    new_rot3 = rot3.copy()
+    new_rot3[:, i] = kin.rotation_to_mat3(new_rot[i], chain.modes[i])
+    tip = chain.point_world(chain.world(new_rot3))
+    tip = np.where(active[:, None], tip, chain.point_world(world))
+    return Result(rot=new_rot, tip=tip, target=tip.copy(), reached=np.ones(n, dtype=bool))

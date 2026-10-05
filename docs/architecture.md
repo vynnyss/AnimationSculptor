@@ -167,7 +167,8 @@ AnimationSculptor/
 ├── scripts/
 │   ├── dev.py                     # link | test | build | validate | fetch-blender
 │   ├── checks.py                  # regras estáticas (core sem bpy, nomes de bones, manifest, links)-docs
-│   └── make_test_assets.py        # gera tests/assets/local/attack_test.blend a partir do personagem local
+│   ├── make_test_assets.py        # gera tests/assets/local/attack_test.blend a partir do personagem local
+│   └── make_basic_rig.py          # esqueleto simples (ADR 0014) para uma malha sem rig (dev.py basic-rig)
 ├── godot/
 │   └── import_test/               # projeto Godot mínimo + script headless de validação
 ├── docs/

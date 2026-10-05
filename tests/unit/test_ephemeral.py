@@ -234,3 +234,43 @@ def test_overstretched_pin_is_reported():
     pin.rel[:, 0, 3] = 1.2                # hip joint far from the chain root: turning the root drags it away
     far = ephemeral.sculpt(chain, _weights(), np.array([0.8, 0.0, 0.0]), solver=ephemeral.DLS, pins=[pin])
     assert not far.pins_reached[F0] and far.pins_reached[_weights() == 0.0].all()
+
+
+# ------------------------------------------------------------------------------------ rotate ("Girar")
+def test_rotate_turns_the_bone_about_the_axis_through_its_head():
+    chain = _chain(3)
+    w = _weights()
+    axis = np.array([0.0, 0.0, 1.0])
+    res = ephemeral.rotate(chain, w, axis, 0.6, bone=1)
+    before = chain.world()
+    after = ephemeral.Chain(chain.base, chain.links, chain.lengths, chain.loc, res.rot, chain.modes,
+                            chain.scale).world()
+    for f in (F0, F0 - 4, F0 + 7):
+        expected = kin.axis_angle_to_mat3(axis, w[f] * 0.6) @ before[f, 1, :3, :3]
+        assert np.abs(after[f, 1, :3, :3] - expected).max() < 1e-9
+        assert np.abs(after[f, 1, :3, 3] - before[f, 1, :3, 3]).max() < 1e-12     # turns about its head
+        assert np.abs(after[f, 0] - before[f, 0]).max() < 1e-12                   # the parent stays
+    out = w == 0.0
+    for new, old in zip(res.rot, chain.rot):
+        assert np.array_equal(new[out], np.asarray(old)[out])
+
+
+def test_rotate_twist_about_the_bone_axis_keeps_its_direction():
+    chain = _chain(2)
+    world = chain.world()
+    axes = world[:, 1, :3, 1]                                   # the bone's own Y axis, per frame
+    res = ephemeral.rotate(chain, _weights(), axes, 1.0)
+    after = ephemeral.Chain(chain.base, chain.links, chain.lengths, chain.loc, res.rot, chain.modes,
+                            chain.scale).world()
+    assert np.abs(after[:, 1, :3, 1] - world[:, 1, :3, 1]).max() < 1e-9          # it points the same way
+    assert np.abs(after[F0, 1, :3, 0] - world[F0, 1, :3, 0]).max() > 0.5          # but it turned
+
+
+def test_rotate_zero_angle_is_identity_and_deterministic():
+    chain = _chain(3)
+    res = ephemeral.rotate(chain, _weights(), (1.0, 0.0, 0.0), 0.0)
+    for new, old in zip(res.rot, chain.rot):
+        assert np.abs(new - old).max() < 1e-12
+    a = ephemeral.rotate(chain, _weights(), (0.3, 0.2, 0.9), 0.4)
+    b = ephemeral.rotate(chain, _weights(), (0.3, 0.2, 0.9), 0.4)
+    assert all(np.array_equal(x, y) for x, y in zip(a.rot, b.rot))

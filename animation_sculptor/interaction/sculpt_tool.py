@@ -8,6 +8,7 @@ Spike scope (agenda item 4): grab of a *key point* of a translation control. The
 the math move to ``anim/`` and ``core/`` in the next items; arc drag, retime and spacing follow.
 """
 
+import math
 import time
 
 import bpy
@@ -32,7 +33,9 @@ TOOL_ID = "animation_sculptor.sculpt"          # Membro (kept id: keymaps and fi
 TOOL_TIP = "animation_sculptor.tip"
 TOOL_BODY = "animation_sculptor.body"
 TOOL_SMOOTH = "animation_sculptor.smooth"
-TOOL_IDS = (TOOL_TIP, TOOL_ID, TOOL_BODY, TOOL_SMOOTH)
+TOOL_ROTATE = "animation_sculptor.rotate"
+TOOL_IDS = (TOOL_TIP, TOOL_ID, TOOL_BODY, TOOL_ROTATE, TOOL_SMOOTH)
+TWIST_RAD_PER_PX = 0.01
 TOOL_SCOPES = {TOOL_TIP: "TIP", TOOL_ID: "LIMB", TOOL_BODY: "BODY"}
 
 
@@ -239,6 +242,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                               ('GRAB', "Grab", ""), ('ARC', "Arc", ""),
                               ('CHAIN', "Cadeia FK", "Ephemeral rig on a rotation-only control (dense keys)"),
                               ('SMOOTH', "Smooth", "Smooth brush: `passes` Gaussian passes in the time window"),
+                              ('ROTATE', "Girar", "Turn `bone` by `angle` about `axis` (or its own axis: `twist`)"),
                               ('RETIME', "Retime", "Move the pose key at frame to new_frame"),
                               ('SPACING', "Spacing", "Ease/favor of the segment around frame")),
                        default='AUTO', options={'SKIP_SAVE'})
@@ -255,6 +259,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                                description="Grabbed spot on the body (world, at frame); with use_point")
     use_point: BoolProperty(default=False, options={'SKIP_SAVE'})
     passes: IntProperty(default=1, min=0, options={'SKIP_SAVE'}, description="Smooth passes (execute)")
+    angle: FloatProperty(subtype='ANGLE', options={'SKIP_SAVE'}, description="Turn angle (execute, mode ROTATE)")
+    axis: FloatVectorProperty(size=3, default=(0.0, 0.0, 1.0), options={'SKIP_SAVE'},
+                              description="World turn axis (execute, mode ROTATE)")
+    twist: BoolProperty(default=False, options={'SKIP_SAVE'}, description="Turn about the bone's own axis")
     from_bone: BoolProperty(default=False, options={'SKIP_SAVE'},
                             description="The gesture grabs the bone's tail at the current frame (no trail)")
     orientation: EnumProperty(items=(('SCENE', "Cena", "Use Scene.asc_sculpt.tip_orientation"),
@@ -384,6 +392,19 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         return ""
 
     def execute(self, context):
+        if self.mode == 'ROTATE':
+            ob = bpy.data.objects.get(self.obj_name)
+            if ob is None:
+                return {'CANCELLED'}
+            radii = (self.radius if self.radius_past < 0 else self.radius_past,
+                     self.radius if self.radius_future < 0 else self.radius_future)
+            reason = self._begin_rotate(context, ob, self.bone, self.frame, radii, axis=tuple(self.axis))
+            if reason:
+                self.report({'WARNING'}, f"Animation Sculptor: {reason}")
+                return {'CANCELLED'}
+            with provider.suspended(keys=None):
+                self.edit.apply_rotation(self.angle, self.twist)
+            return {'FINISHED'}
         if self.mode == 'SMOOTH':
             ob = bpy.data.objects.get(self.obj_name)
             if ob is None:
@@ -443,6 +464,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
         if tool == TOOL_SMOOTH:
             return self._invoke_smooth(context, event, hit, radii)
+        if tool == TOOL_ROTATE or state.ROTATE_HELD:
+            return self._invoke_rotate(context, event, hit, radii)
         if event.ctrl and not hit.on_body:
             return self._invoke_timing(context, event, hit)
         mode = 'GRAB' if hit.is_key else 'ARC'
@@ -482,6 +505,138 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         self._update_falloff()
         context.window_manager.modal_handler_add(self)
         self._header(context)
+        return {'RUNNING_MODAL'}
+
+    def _begin_rotate(self, context, ob, bone, frame, radii, axis=None):
+        settings = _settings()
+        info = rig.get_adapter(ob).classify(ob, bone)
+        if info is None or not info.rotates:
+            return "parte sem rotação livre"
+        reason = ephemeral_edit.refusal(ob, [bone])
+        if reason:
+            return reason
+        if axis is None:
+            axis = context.region_data.view_rotation @ Vector((0.0, 0.0, 1.0))     # toward the viewer
+        toward_viewer = Vector(axis)
+        self.edit = ephemeral_edit.RotateEdit(ob, bone, frame, radii[0], radii[1],
+                                              settings.falloff if settings is not None else "SMOOTH",
+                                              view_axis=tuple(toward_viewer))
+        if not self.edit.editable:
+            return self.edit.reason or "sem canais de rotação"
+        self.obj_name, self.bone, self.frame = ob.name, bone, frame
+        return ""
+
+    def _start_rotate_drag(self, context, event):
+        """Pivot = the bone's head on screen; the angle follows the mouse around it (like Blender's R)."""
+        ob = bpy.data.objects[self.obj_name]
+        head = ob.matrix_world @ ob.pose.bones[self.bone].head
+        self.pivot2d = picking.world_to_screen(context.region, context.region_data, head)
+        self.twist = bool(event.shift)
+        self.rot_angle = 0.0
+        mouse = Vector((event.mouse_region_x, event.mouse_region_y))
+        self.last_mouse_rot = mouse
+        self.last_polar = self._polar(mouse)
+
+    def _polar(self, mouse):
+        if self.pivot2d is None:
+            return 0.0
+        d = mouse - self.pivot2d
+        return math.atan2(d.y, d.x)
+
+    def _invoke_rotate(self, context, event, hit, radii):
+        ob = bpy.data.objects.get(hit.obj_name)
+        if ob is None or context.region_data is None:
+            return {'CANCELLED'}
+        if context.scene.frame_current != hit.frame:
+            context.scene.frame_set(hit.frame)
+        reason = self._begin_rotate(context, ob, hit.bone, hit.frame, radii)
+        if reason:
+            return self._refuse(context, hit, reason)
+        self.origin = Vector(hit.world)
+        self.last_mouse = (event.mouse_region_x, event.mouse_region_y)
+        self.accum = Vector((0.0, 0.0, 0.0))
+        self._start_rotate_drag(context, event)
+        provider.suspend()
+        state.HOVER = None
+        state.REFUSAL = None
+        state.GESTURE = {"kind": "ROTATE", "world": tuple(self.origin), "bone": hit.bone, "frame": hit.frame,
+                         "preview": None, "falloff": [], "mesh": hit.mesh, "deform": hit.deform, "label": ""}
+        context.window_manager.modal_handler_add(self)
+        self._header(context)
+        return {'RUNNING_MODAL'}
+
+    def _switch_to_rotate(self, context, event):
+        """R pressed during a drag: the gesture becomes a turn of the same part, from where the mouse is."""
+        self.edit.restore()
+        # re-apply the restored Action at this frame (a plain depsgraph update keeps the dragged pose): the
+        # pivot and the next sampling must see the pose without the drag
+        context.scene.frame_set(context.scene.frame_current)
+        settings = _settings()
+        radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
+        ob = bpy.data.objects[self.obj_name]
+        reason = self._begin_rotate(context, ob, self.bone, self.frame, radii)
+        if reason:
+            self.report({'WARNING'}, f"Animation Sculptor: {reason}")
+            return False
+        self._start_rotate_drag(context, event)
+        state.GESTURE["kind"] = "ROTATE"
+        state.GESTURE["preview"] = None
+        state.GESTURE["falloff"] = []
+        return True
+
+    def _move_rotate(self, context, event):
+        mouse = Vector((event.mouse_region_x, event.mouse_region_y))
+        if self.twist:
+            step = (mouse.x - self.last_mouse_rot.x) * TWIST_RAD_PER_PX
+        else:
+            polar = self._polar(mouse)
+            step = (polar - self.last_polar + math.pi) % (2.0 * math.pi) - math.pi     # shortest way round
+            self.last_polar = polar
+        self.last_mouse_rot = mouse
+        self.rot_angle += step
+        self.edit.apply_rotation(self.rot_angle, self.twist)
+        state.GESTURE["label"] = f"{math.degrees(self.rot_angle):+.0f}°"
+        self._header(context)
+        context.area.tag_redraw()
+
+    def _modal_rotate(self, context, event):
+        if event.type == 'MOUSEMOVE':
+            t0 = time.perf_counter()
+            self._move_rotate(context, event)
+            state.STATS["last_move_ms"] = (time.perf_counter() - t0) * 1000.0
+            return {'RUNNING_MODAL'}
+        if event.type == 'R':
+            if event.value == 'RELEASE':
+                state.ROTATE_HELD = False          # the turn goes on until the mouse is released
+            return {'RUNNING_MODAL'}
+        if event.value == 'PRESS' and event.type in RADIUS_KEYS:
+            step = 1.0 if event.type in {'WHEELUPMOUSE', 'RIGHT_BRACKET'} else -1.0
+            rp = max(0.0, min(500.0, self.edit.radius_past + step))
+            rf = max(0.0, min(500.0, self.edit.radius_future + step))
+            self._store_radii(rp, rf)
+            self.edit.set_radii(rp, rf)
+            self._header(context)
+            context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
+        if event.type in {'LEFTMOUSE', 'RET', 'NUMPAD_ENTER'} and event.value == 'RELEASE' or (
+                event.type in {'RET', 'NUMPAD_ENTER'} and event.value == 'PRESS'):
+            if abs(self.rot_angle) < 1e-9:
+                self.edit.restore()                # a click without turning writes nothing
+                self._end(context, cancel=True)
+                return {'CANCELLED'}
+            self._end(context, cancel=False)
+            return {'FINISHED'}
+        if event.type in {'ESC', 'RIGHTMOUSE'} and event.value == 'PRESS':
+            self.edit.restore()
+            self._end(context, cancel=True)
+            return {'CANCELLED'}
+        if event.value == 'PRESS' and event.type not in PASSIVE_KEYS:     # a lost release never hangs
+            if abs(self.rot_angle) < 1e-9:
+                self.edit.restore()
+                self._end(context, cancel=True)
+                return {'CANCELLED', 'PASS_THROUGH'}
+            self._end(context, cancel=False)
+            return {'FINISHED', 'PASS_THROUGH'}
         return {'RUNNING_MODAL'}
 
     def _invoke_smooth(self, context, event, hit, radii):
@@ -615,6 +770,14 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
 
     def _header(self, context):
         hint = "   Shift: precisão · Esc/RMB: cancelar · soltar: confirmar"
+        if self.edit.kind == "ROTATE":
+            e = self.edit
+            how = "torção (eixo do bone)" if self.twist else "eixo da vista"
+            context.area.header_text_set(
+                f"Girar {e.bone} @ {self.frame}   {math.degrees(self.rot_angle):+.1f}° · {how} · janela "
+                f"←{e.radius_past:g} · {e.radius_future:g}→   (gire o mouse em volta da junta; Shift ao começar: torção)"
+                + hint)
+            return
         if self.edit.kind == "SMOOTH":
             e = self.edit
             context.area.header_text_set(
@@ -675,6 +838,13 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     def modal(self, context, event):
         if self.edit.kind == "SMOOTH":
             return self._modal_smooth(context, event)
+        if self.edit.kind == "ROTATE":
+            return self._modal_rotate(context, event)
+        if event.type == 'R' and event.value == 'PRESS' and self.edit.kind in {"GRAB", "ARC", "CHAIN"}:
+            if self._switch_to_rotate(context, event):     # R during a drag: turn the part instead
+                self._header(context)
+                context.area.tag_redraw()
+            return {'RUNNING_MODAL'}
         if event.type == 'MOUSEMOVE' and self.edit.kind in {"RETIME", "SPACING"}:
             t0 = time.perf_counter()
             self._move_timing(context, event)
@@ -777,7 +947,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                 self.edit.restore()
                 cancel = True
                 self.report({'WARNING'}, f"Animation Sculptor: o gesto foi desfeito ({exc})")
-        timing = self.edit.kind in {"RETIME", "SPACING", "CHAIN", "SMOOTH"}     # several bones change
+        timing = self.edit.kind in {"RETIME", "SPACING", "CHAIN", "SMOOTH", "ROTATE"}     # several bones change
         provider.resume(keys=[] if cancel else (None if timing else [(self.obj_name, self.bone)]))
         if not cancel:
             # recompute the edited trail now instead of waiting for the engine's timer
@@ -898,6 +1068,7 @@ class _SculptTool:
         ("view3d.select", {"type": 'LEFTMOUSE', "value": 'CLICK'}, {"properties": [("deselect_all", True)]}),
         ("view3d.select", {"type": 'LEFTMOUSE', "value": 'CLICK', "shift": True}, {"properties": [("toggle", True)]}),
         ("view3d.select_box", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'}, None),
+        ("asc.rotate_hold", {"type": 'R', "value": 'PRESS'}, None),      # hold R + drag: turn the part
     )
     draw_settings = staticmethod(_draw_settings)
 
@@ -926,6 +1097,14 @@ class ASC_WT_body(_SculptTool, bpy.types.WorkSpaceTool):
     bl_icon = "ops.pose.push"
 
 
+class ASC_WT_rotate(_SculptTool, bpy.types.WorkSpaceTool):
+    bl_idname = TOOL_ROTATE
+    bl_label = "Girar"
+    bl_description = ("Arraste uma parte do corpo girando o mouse em volta da junta: a parte gira (eixo da vista); "
+                      "com Shift ao começar, gira em torno do próprio eixo (torção). Nas outras ferramentas: segure R")
+    bl_icon = "ops.transform.rotate"
+
+
 class ASC_WT_smooth(_SculptTool, bpy.types.WorkSpaceTool):
     bl_idname = TOOL_SMOOTH
     bl_label = "Smooth"
@@ -933,7 +1112,28 @@ class ASC_WT_smooth(_SculptTool, bpy.types.WorkSpaceTool):
     bl_icon = "ops.gpencil.sculpt_blur"
 
 
-TOOLS = (ASC_WT_tip, ASC_WT_sculpt, ASC_WT_body, ASC_WT_smooth)
+TOOLS = (ASC_WT_tip, ASC_WT_sculpt, ASC_WT_body, ASC_WT_rotate, ASC_WT_smooth)
+
+
+class ASC_OT_rotate_hold(bpy.types.Operator):
+    """Segure R e arraste uma parte do corpo para girá-la (como a ferramenta Girar)"""
+    bl_idname = "asc.rotate_hold"
+    bl_label = "Animation Sculptor: girar (segurar R)"
+
+    def invoke(self, context, event):
+        state.ROTATE_HELD = True
+        context.window_manager.modal_handler_add(self)
+        if context.area is not None:
+            context.area.header_text_set("Animation Sculptor · R: arraste uma parte para girá-la")
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        if (event.type == 'R' and event.value == 'RELEASE') or not state.ROTATE_HELD:
+            state.ROTATE_HELD = False
+            if context.area is not None and state.GESTURE is None:
+                context.area.header_text_set(None)
+            return {'FINISHED', 'PASS_THROUGH'}
+        return {'PASS_THROUGH'}
 
 
 class ASC_OT_activate_tool(bpy.types.Operator):
@@ -951,7 +1151,7 @@ class ASC_OT_activate_tool(bpy.types.Operator):
         return bpy.ops.wm.tool_set_by_id(name=tool)
 
 
-classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool)
+classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool, ASC_OT_rotate_hold)
 TOOL_HOTKEY = {"type": 'K', "value": 'PRESS', "shift": True, "alt": True}   # free in the default keymap (5.2)
 _keymaps = []
 

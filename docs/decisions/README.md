@@ -7,7 +7,7 @@ ADRs leves inspirados em [MADR](https://github.com/adr/madr). Um arquivo por dec
 | # | Decisão | Status |
 |---|---|---|
 | [0001](0001-live-motion-path-foundation.md) | Live Motion Path vendorizado como fundação das trails | aceito |
-| [0002](0002-rigify-first-rig-adapter.md) | Rigify primeiro, por trás de um Rig Adapter | aceito |
+| [0002](0002-rigify-first-rig-adapter.md) | Rigify primeiro, por trás de um Rig Adapter | aceito; substituído em parte por [0014](0014-skeleton-first.md) |
 | [0003](0003-native-blender-animation-output.md) | Saída é animação Blender nativa (Action/F-Curves) | aceito |
 | [0004](0004-blender-5.2-baseline.md) | Blender 5.2 LTS como baseline único | aceito |
 | [0005](0005-extension-not-fork.md) | Extensão Python, não fork nem módulo nativo | aceito |
@@ -19,6 +19,7 @@ ADRs leves inspirados em [MADR](https://github.com/adr/madr). Um arquivo por dec
 | [0011](0011-ephemeral-rig-dense-keys.md) | FK por rig efêmero (solve em `core/`) com keys densas na janela de tempo | aceito (2026-10-04) |
 | [0012](0012-spacing-policy-preserve-path.md) | Política de spacing: `PRESERVE_PATH` como padrão | aceito (2026-10-04) |
 | [0013](0013-body-and-trail-interaction.md) | Interação em dois modos: agarrar o corpo (pose/arco) e a trail (tempo); ferramentas na lateral; Rigify escondido | aceito (2026-10-04) |
+| [0014](0014-skeleton-first.md) | Esqueleto primeiro: o esqueleto de deformação simples é o controle; Rigify secundário; gesto Girar | aceito (2026-10-04) |
 
 ## Modelo
 

@@ -29,6 +29,11 @@ def _mode(context):
     return settings.interaction_mode if settings is not None else 'TRAIL'
 
 
+def _paths_visible(context):
+    s = provider.settings(context.scene)
+    return bool(s is not None and s.enabled and s.path_show)
+
+
 def body_hit(context, location):
     """Modo Corpo: the body spot under the mouse, mapped to the control that moves it (ADR 0013)."""
     ob = context.active_object
@@ -130,10 +135,11 @@ class ASC_GT_trail_points(bpy.types.Gizmo):
                 "LMB arrastar: mudar · Shift: os dois lados")
             return 0
         try:
-            if _mode(context) == 'BODY':
-                hit = body_hit(context, location)
-            else:
+            hit = None
+            if _mode(context) != 'BODY' or _paths_visible(context):
                 hit = picking.hit_test(context.region, context.region_data, location, candidate_keys(context))
+            if hit is None and _mode(context) == 'BODY':
+                hit = body_hit(context, location)
             if hit is None:     # nothing else: the tail of a selected bone the ephemeral gesture can turn
                 ob = context.active_object
                 hit = picking.bone_tip_hit(context.region, context.region_data, location, ob,

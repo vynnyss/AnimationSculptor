@@ -168,6 +168,17 @@ Pincel temporal:
   - os screenshots de cada fase vão para a conversa.
 - Manual: o mantenedor anima com cada PR (decisão 8); cada PR traz o roteiro clique a clique.
 
+## Esqueleto simples e Girar (0.8.0, [ADR 0014](../decisions/0014-skeleton-first.md))
+
+- **Esqueleto primeiro**: o personagem usa um esqueleto de deformação simples (`scripts/make_basic_rig.py`, `dev.py basic-rig`: 53 bones com dedos, quaternions; `root` só translada, `hips` translada e gira, o resto só gira). Os bones de deformação são os controles: todo gesto do modo Corpo é o rig efêmero sobre eles, pelo adapter genérico. O Rigify continua disponível ("Ligar Rigify"), em segundo plano.
+- **Girar** — duas formas, para o mantenedor comparar a usabilidade:
+  - a **ferramenta Girar** (barra lateral, ícone de rotação): LMB no corpo + arrastar gira o bone sob o cursor em volta da junta (cabeça do bone), no plano da vista;
+  - **segurar R** com qualquer ferramenta de sculpt: R + arrastar faz o mesmo; apertar R **no meio** de um arrasto de Membro/Corpo troca o gesto para Girar (a parte já arrastada é desfeita).
+  - O ângulo segue o mouse em volta do pivô na tela (acumulado pelo menor caminho, sem saltos em ±180°). **Shift** no início = **torção** (gira em volta do eixo do próprio bone; arrastar na horizontal). Roda/`[ ]` mudam a janela; Esc/RMB cancela bit a bit; soltar sem girar não escreve nada; um passo de undo. Header: `Girar <bone> +30°` e a janela.
+  - Escreve keys densas de rotação na janela da régua, com o falloff (`core/ephemeral.rotate`: peso 0 deixa a key idêntica).
+- **Trails no modo Corpo**: com as trails ligadas, os pontos da trail são agarráveis também no modo Corpo (o picking testa a régua, depois a trail, depois a malha); os gestos de trail são os mesmos do modo Trail.
+- **Onion expandido**: um espaçamento por **personagem** (armature que deforma as malhas), medido na caixa de todas as malhas visíveis dele: malhas separadas do mesmo esqueleto (cabeça, tronco, pernas) andam juntas.
+
 ## Riscos e perguntas abertas
 
 - **Custo do raycast por mouse move** em malhas densas: medir; cache de `BVHTree` por pose e frame; meta < 16 ms com o realce.

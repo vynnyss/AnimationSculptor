@@ -300,11 +300,13 @@ def test_smooth_makes_the_hand_skin_path_smoother(public_rig):
 
 
 # -- 5. tools and modes ----------------------------------------------------------------------------
-def test_the_four_tools_exist(addon):
+def test_the_toolbar_tools_exist(addon):
     sculpt_tool = importlib.import_module(addon.__name__ + ".interaction.sculpt_tool")
     labels = {t.bl_idname: t.bl_label for t in sculpt_tool.TOOLS}
     assert labels == {"animation_sculptor.tip": "Ponta", "animation_sculptor.sculpt": "Membro",
-                      "animation_sculptor.body": "Corpo", "animation_sculptor.smooth": "Smooth"}
+                      "animation_sculptor.body": "Corpo", "animation_sculptor.rotate": "Girar",
+                      "animation_sculptor.smooth": "Smooth"}
+    assert hasattr(bpy.ops.asc, "rotate_hold")
     assert sculpt_tool.TOOL_IDS == tuple(t.bl_idname for t in sculpt_tool.TOOLS)
     assert all(issubclass(t, bpy.types.WorkSpaceTool) for t in sculpt_tool.TOOLS)
     assert hasattr(bpy.ops.asc, "activate_tool")
