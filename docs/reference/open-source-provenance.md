@@ -20,12 +20,13 @@ Patches aplicados (todos marcados `# ASC-PATCH Pn` no código):
 - **P10**: o frame stepping (`run_step_job`) preserva a pose não keyada dos armatures envolvidos — incluindo, desde a 0.7.0, as armatures que deformam/são pai das malhas alvo do onion skin (salva antes, devolve depois de voltar ao frame; o update dessa escrita é ignorado via `self_tagged`).
 - **P11**: gancho de desenho `draw.GHOST_OFFSET` (deslocamento por fantasma do onion, só desenho), instalado pelo `trails/provider.py` para a onion expandida.
 - **P12**: gancho de alvos `engine.TARGETS_OVERRIDE` (o host escolhe os alvos de trail/onion), instalado pelo `trails/provider.py` para o modo Corpo.
+- **P13**: o solver nativo de bones calcula e limpa os Motion Paths com a seleção igual aos alvos (depois restaurada), para não deixar paths do Blender em bones não selecionados.
 
 `scripts/dev.py` segue a *estrutura* do BlenderAddonTemplate (subcomandos build/test, pytest dentro do Blender), com código escrito do zero. As demais linhas da tabela abaixo são o **plano**; mudar a coluna "status" quando o código entrar no repo, com o commit de origem.
 
 | Componente | Projeto origem | Arquivo origem (commit) | Licença | Estratégia | Destino | Status |
 |---|---|---|---|---|---|---|
-| Engine de trails, cache, scheduler | Live Motion Path | `engine.py` (`0e173fd`) | GPL-3+ | reutilizado + patches P1–P4, P7–P9 | `animation_sculptor/trails/lmp/engine.py` | no repo (`feat/vendor-lmp`) |
+| Engine de trails, cache, scheduler | Live Motion Path | `engine.py` (`0e173fd`) | GPL-3+ | reutilizado + patches P1–P4, P7–P10, P12, P13 | `animation_sculptor/trails/lmp/engine.py` | no repo (`feat/vendor-lmp`) |
 | Desenho GPU de paths/onion | Live Motion Path | `draw.py` (`0e173fd`) | GPL-3+ | reutilizado + P1, P9, P11 | `trails/lmp/draw.py` | no repo (`feat/vendor-lmp`) |
 | Compat 5.x, handlers, props, ops, ui | Live Motion Path | `compat.py`, `handlers.py`, `props.py`, `ops.py`, `ui.py` (`0e173fd`) | GPL-3+ | reutilizado + P1/P3/P5 (`ui.py` com P5; `prefs.py` não vendorizado; P6 não aplicado) | `trails/lmp/` | no repo (`feat/vendor-lmp`) |
 | Acesso a F-Curves via channelbag | Live Motion Path | `compat.get_fcurves` (`0e173fd`) | GPL-3+ | adaptado (só 5.2, + escrita) | `anim/action_io.py` | no repo (`feat/core-bezier-action-io`) |

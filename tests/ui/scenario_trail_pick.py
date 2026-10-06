@@ -71,6 +71,7 @@ def scenario(h):
     rig = bpy.data.objects[rig_name]
     h.check("the click shows the forearm's trail", trail is not None, provider.targets())
     h.check("the click edits nothing", body_ui.dump(rig) == dump0 and state.GESTURE is None)
+    h.check("no Blender Motion Path left on the picked part", rig.pose.bones[BONE].motion_path is None)
     h.screenshot("1-trail-picked")
     if trail is None:
         return
@@ -106,6 +107,11 @@ def scenario(h):
     h.check("Todas: the trails of every part are shown", {"hips", "head", "hand.L", "foot.R", BONE} <= bones,
             len(bones))
     h.screenshot("3-all-trails")
+    rig = bpy.data.objects[rig_name]
+    h.check("no Blender Motion Path left behind (native solver cleans up unselected targets)",
+            not [pb.name for pb in rig.pose.bones if pb.motion_path is not None],
+            [pb.name for pb in rig.pose.bones if pb.motion_path is not None][:6])
+    h.check("the selection is untouched", not [pb.name for pb in rig.pose.bones if pb.select])
     rig = bpy.data.objects[rig_name]
     trail_px = []
     for key in provider.targets():
