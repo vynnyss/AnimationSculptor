@@ -114,6 +114,14 @@ def pose_bone_selected(pbone):
     return bool(sel)
 
 
+def set_pose_bone_selected(pbone, value):
+    """ASC-PATCH P13: write the selection (``PoseBone.select`` in 5.x, ``Bone.select`` before)."""
+    if hasattr(pbone, "select"):
+        pbone.select = bool(value)
+    else:
+        pbone.bone.select = bool(value)
+
+
 def pose_bone_hidden(pbone):
     try:
         if pbone.bone.hide:

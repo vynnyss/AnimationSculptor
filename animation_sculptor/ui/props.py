@@ -84,12 +84,21 @@ def _upd_mode(self, context):
     scene = getattr(context, "scene", None)
     if scene is not None and self.interaction_mode == 'TRAIL':
         _provider().set_paths(scene, True)
+    provider = _provider()
+    if hasattr(provider, "engine"):
+        provider.engine.targets_changed()       # Corpo shows the character's targets, Trail the selection's
 
 
 def _upd_trails(self, context):
     scene = getattr(context, "scene", None)
     if scene is not None:
         _provider().set_paths(scene, self.show_trails)
+
+
+def _upd_retarget(self, _context):
+    provider = _provider()
+    if hasattr(provider, "engine"):
+        provider.engine.targets_changed()
 
 
 def _upd_linked(self, _context):
@@ -129,6 +138,12 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         name="Trails", description="Mostrar as trajetórias (trails) dos controles selecionados",
         default=True, update=_upd_trails,
     )
+    trail_all: BoolProperty(
+        name="Todas as trails",
+        description="Mostrar as trails de todas as partes do personagem (no modo Trail, todas podem ser editadas). "
+                    "Desligado: só a da parte do corpo tocada por último",
+        default=False, update=_upd_retarget,
+    )
     interaction_mode: EnumProperty(
         name="Modo",
         items=(('BODY', "Corpo", "Agarre o corpo do personagem: pose e arco no frame atual"),
@@ -136,9 +151,9 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         default='BODY', update=_upd_mode,
     )
     show_rig: BoolProperty(
-        name="Ligar Rigify",
-        description="Mostrar os bones/controles do rig no viewport. Desligado, o corpo é agarrado pela malha "
-                    "e a animação continua sendo gravada nos controles",
+        name="Esqueleto",
+        description="Mostrar os bones do esqueleto (ou os controles do Rigify) no viewport. Desligado, o corpo é "
+                    "agarrado pela malha e a animação continua sendo gravada nos bones",
         default=True, update=_upd_show_rig,
     )
     onion_show: BoolProperty(
@@ -149,6 +164,30 @@ class ASC_SculptSettings(bpy.types.PropertyGroup):
         name="Onion expandida",
         description="Espalha os fantasmas para os lados da tela (passado à esquerda, futuro à direita)",
         default=False, update=_sync_onion,
+    )
+    clip_negative: BoolProperty(
+        name="Cortar no frame 0",
+        description="Os gestos nunca escrevem keys antes do frame 0 (a janela da régua é cortada ali)",
+        default=True,
+    )
+    key_mode: EnumProperty(
+        name="Keys",
+        items=(('POSE', "Pose a pose", "Arrastar muda a pose do frame atual (uma key por canal ali); as poses "
+                                        "vizinhas na janela mudam só um pouco (Influência nas poses)"),
+               ('DENSE', "Densas", "Arrastar grava uma key por frame em toda a janela da régua (rig efêmero)")),
+        default='POSE',
+    )
+    pose_influence: FloatProperty(
+        name="Influência nas poses",
+        description="Quanto as poses-chave vizinhas (dentro da janela da régua) acompanham um arrasto feito em "
+                    "outro frame (0 = travadas)",
+        default=0.25, min=0.0, max=1.0, subtype='FACTOR',
+    )
+    smooth_mode: EnumProperty(
+        name="Suavizar",
+        items=(('TRAIL', "Trail", "Suaviza o caminho da parte no espaço (a trail) e resolve o membro para segui-lo"),
+               ('ROTATION', "Rotações", "Suaviza as curvas de rotação dos bones do membro, frame a frame")),
+        default='TRAIL',
     )
     smooth_strength: FloatProperty(
         name="Força do Smooth", description="Quanto cada passe do pincel Smooth aproxima a curva da média",

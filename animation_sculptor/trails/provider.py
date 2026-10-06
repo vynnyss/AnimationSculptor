@@ -140,6 +140,78 @@ def use_adapter_bone_points(enabled: bool = True) -> None:
     engine.BONE_POINT_RESOLVER = _adapter_bone_point if enabled else None
 
 
+# Corpo mode targets (ASC-PATCH P12): whatever is selected, the character's meshes get the onion skin and
+# the body part last touched gets its trail — the animator never has to select the skeleton.
+FOCUS = {}      # armature name -> bone name of the body part last touched (session only)
+
+
+def focus_part(ob, bone) -> None:
+    """The body part ``bone`` of armature ``ob`` was touched: its trail is the one shown in the Corpo mode."""
+    if ob is None or ob.type != 'ARMATURE' or not bone or FOCUS.get(ob.name) == bone:
+        return
+    FOCUS[ob.name] = bone
+    engine.targets_changed()
+
+
+def body_characters(view_layer):
+    """Armatures animated in the Corpo mode: the active armature, else the one deforming the active object,
+    else every armature deforming a visible mesh."""
+    import bpy
+
+    active = view_layer.objects.active if view_layer is not None else None
+    if active is not None and active.type == 'ARMATURE':
+        return [active]
+    if active is not None:
+        arm = bpy.data.objects.get(character_of(active.name))
+        if arm is not None and arm.type == 'ARMATURE':
+            return [arm]
+    found = []
+    for ob in view_layer.objects if view_layer is not None else ():
+        if ob.type == 'MESH' and ob.visible_get(view_layer=view_layer):
+            arm = bpy.data.objects.get(character_of(ob.name))
+            if arm is not None and arm.type == 'ARMATURE' and arm not in found:
+                found.append(arm)
+    return found
+
+
+def _body_targets(scene, view_layer):
+    """TARGETS_OVERRIDE hook. Corpo: the trail of the part last touched (else the selected bones). Trail: the
+    part last clicked on the body (it picks the trail to edit) plus the selected bones. Both: the onion on the
+    character's meshes. None = the LMP's own modes (pinned targets, no character)."""
+    settings = getattr(scene, "asc_sculpt", None)
+    trails = getattr(scene, "asc_trails", None)
+    if settings is None or trails is None or trails.target_mode == 'PINNED':
+        return None                     # pinned targets are an explicit choice of the user: kept
+    trail_mode = settings.interaction_mode == 'TRAIL'
+    arms = body_characters(view_layer)
+    if not arms:
+        return None
+    items, sig = [], []
+    for arm in arms:
+        if settings.trail_all:          # every part of the character (its controls), whatever is selected
+            from .. import rig as rig_adapters
+
+            bones = [info.name for info in rig_adapters.get_adapter(arm).controls(arm)
+                     if not arm.pose.bones[info.name].bone.hide]
+            items += [(arm, bone, True, False) for bone in bones]
+            meshes = engine.deformed_meshes(arm)
+            items += [(m, None, False, True) for m in meshes]
+            sig.append((arm.name, "ALL", tuple(m.name for m in meshes)))
+            continue
+        bones = [FOCUS[arm.name]] if arm.pose.bones.get(FOCUS.get(arm.name) or "") is not None else []
+        if (trail_mode or not bones) and arm.mode == 'POSE':    # the selected bones too (Corpo: until touched)
+            bones += [pb.name for pb in arm.pose.bones if pb.select and not pb.bone.hide and pb.name not in bones]
+        items += [(arm, bone, True, False) for bone in bones]
+        meshes = engine.deformed_meshes(arm)
+        items += [(m, None, False, True) for m in meshes]
+        sig.append((arm.name, tuple(bones), tuple(m.name for m in meshes)))
+    return tuple(sig), items
+
+
+def use_body_targets(enabled: bool = True) -> None:
+    engine.TARGETS_OVERRIDE = _body_targets if enabled else None
+
+
 # Past / future convention of Animation Sculptor (design/ephemeral-rig.md, "Paleta passado/futuro"):
 # past red, future green, current frame white — trails, onion skin and the time ruler alike.
 PAST_COLOR = (0.95, 0.22, 0.18)

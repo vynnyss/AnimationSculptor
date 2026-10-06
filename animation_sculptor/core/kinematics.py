@@ -23,6 +23,7 @@ import numpy as np
 EULER_ORDERS = ("XYZ", "XZY", "YXZ", "YZX", "ZXY", "ZYX")
 _AXIS = {"X": 0, "Y": 1, "Z": 2}
 EPS = 1e-12
+BENT_SIN = 0.1      # sin of the bend (~6°) below which a limb counts as straight for two_bone_ik
 GIMBAL_EPS = 1e-12    # float64 (Blender uses 16·FLT_EPSILON for its float matrices)
 
 
@@ -302,8 +303,11 @@ def two_bone_ik(a, b, c, target, bend_axis=None):
     """Analytic two-bone IK in world space, vectorised over (N, 3).
 
     a = root head, b = middle joint, c = tip (end of the second bone), ``target`` = wanted tip.
-    The bend happens in the current plane of (a, b, c) — the existing pose is the pole, the limb never
-    flips; ``bend_axis`` (N, 3) is the fallback normal when the limb is straight. Out of reach ⇒ the
+    The bend happens in the current plane of (a, b, c) — the existing pose is the pole. ``bend_axis``
+    (N, 3) is the joint's hinge, signed so that a positive turn about it bends the limb the natural way:
+    when given, it replaces the plane wherever the limb is nearly straight (the plane is numerical noise
+    there and flips from frame to frame, which made elbows jump), so a straightened limb bends again to the
+    natural side. Without it, ``any_perpendicular`` is the fallback for a straight limb. Out of reach ⇒ the
     limb stretches to its limit towards the target (no scaling); too close ⇒ folds to |l1 − l2|.
 
     Returns (Δ1, Δ2): world rotations (N, 3, 3) — Δ1 turns the first bone about ``a``; Δ2 turns the
@@ -322,17 +326,23 @@ def two_bone_ik(a, b, c, target, bend_axis=None):
         fallback = normalize(np.asarray(bend_axis, dtype=np.float64) - normalize(u1) * np.sum(
             np.asarray(bend_axis, dtype=np.float64) * normalize(u1), axis=-1, keepdims=True))
         fallback = np.where((np.linalg.norm(fallback, axis=-1) > EPS)[..., None], fallback, any_perpendicular(u1))
-    n = np.where((nlen > 1e-9 * np.maximum(l1 * l2, EPS))[..., None], n / np.maximum(nlen, EPS)[..., None], fallback)
+    plane = n / np.maximum(nlen, EPS)[..., None]
+    if bend_axis is None:
+        n = np.where((nlen > 1e-9 * np.maximum(l1 * l2, EPS))[..., None], plane, fallback)
+    else:
+        bent = nlen > BENT_SIN * np.maximum(l1 * l2, EPS)
+        n = np.where(bent[..., None], plane, fallback)
 
     # 1) bend: interior angle at b so that |c' − a| = d
     d = np.linalg.norm(t - a, axis=-1)
     d = np.clip(d, np.abs(l1 - l2), l1 + l2)
-    cos_b = np.clip((l1 * l1 + l2 * l2 - d * d) / np.maximum(2.0 * l1 * l2, EPS), -1.0, 1.0)
-    interior_new = np.arccos(cos_b)
-    cos_old = np.clip(np.sum(-u1 * u2, axis=-1) / np.maximum(l1 * l2, EPS), -1.0, 1.0)
-    interior_old = np.arccos(cos_old)
-    # turning u2 about n by +θ decreases the interior angle by θ (n = u1 × u2 orientation)
-    d2 = axis_angle_to_mat3(n, interior_old - interior_new)
+    # turn u2 about n (⊥ u1) so that |u1 + u2'| = d: only u2's part across n (length p) bends. With n the
+    # plane normal (p = l2) this is the law of cosines; with the hinge the limb bends to its positive side
+    across = u2 - n * np.sum(n * u2, axis=-1, keepdims=True)
+    p = np.linalg.norm(across, axis=-1)
+    cos_new = np.clip((d * d - l1 * l1 - l2 * l2) / np.maximum(2.0 * l1 * p, EPS), -1.0, 1.0)
+    bend_old = np.arctan2(np.sum(n * np.cross(u1, u2), axis=-1), np.sum(u1 * u2, axis=-1))
+    d2 = axis_angle_to_mat3(n, np.arccos(cos_new) - bend_old)
     c_bent = b + np.einsum("nij,nj->ni", d2, u2)
 
     # 2) swing: minimal rotation about a taking (c_bent − a) to (t − a)

@@ -40,7 +40,8 @@ class Chain:
     lengths (K,); loc/scale (N, K, 3); rot: K arrays, (N, 4) quaternion or (N, 3) Euler per ``modes``;
     lock_rotation (K, 3) bools (quaternion: locks the x/y/z components, like Blender's 3D locks);
     point: the dragged point in the last bone's local space, (3,) or per frame (N, 3); None = its tail
-    (0, length, 0). A point grabbed on the body surface is rigid with its bone."""
+    (0, length, 0). A point grabbed on the body surface is rigid with its bone. bend_sign: +1 or −1, the
+    side the middle joint (elbow/knee) bends to about the middle bone's X axis (from the rest pose)."""
 
     base: np.ndarray
     links: np.ndarray
@@ -51,6 +52,7 @@ class Chain:
     scale: np.ndarray
     lock_rotation: np.ndarray = field(default=None)
     point: np.ndarray = field(default=None)
+    bend_sign: float = 1.0
 
     @property
     def bone_count(self) -> int:
@@ -159,7 +161,7 @@ def _own_deltas(chain, world, target, orientation, bend_axis, solver=AUTO):
         deltas[:, 0] = kin.aim(heads[:, 0], tip, target)
     elif k in (2, 3):
         if bend_axis is None:
-            bend_axis = world[:, 1, :3, 0]           # the middle bone's X axis (elbow/knee hinge)
+            bend_axis = chain.bend_sign * world[:, 1, :3, 0]     # the middle bone's X axis (elbow/knee hinge)
         if k == 2:
             c, t = tip, target
         else:
@@ -202,7 +204,7 @@ def _solve_pin(pin, world_old, world_new, active):
         c, t = kin.tails(wn[:, 1], limb.lengths[1]), kin.tails(wo[:, 1], limb.lengths[1])
     else:
         c, t = heads_n[:, 2], wo[:, 2, :3, 3]
-    d1, d2, tip = kin.two_bone_ik(heads_n[:, 0], heads_n[:, 1], c, t, wn[:, 1, :3, 0])
+    d1, d2, tip = kin.two_bone_ik(heads_n[:, 0], heads_n[:, 1], c, t, limb.bend_sign * wn[:, 1, :3, 0])
     reached = (np.linalg.norm(tip - t, axis=1) < REACH_TOL) | ~active
     new_rot3 = rot3.copy()
     new_rot3[:, 0] = kin.local_rotation_update(_frames_rot(new_limb, wn, 0), d1, rot3[:, 0])

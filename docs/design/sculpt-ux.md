@@ -176,8 +176,34 @@ Pincel temporal:
   - **segurar R** com qualquer ferramenta de sculpt: R + arrastar faz o mesmo; apertar R **no meio** de um arrasto de Membro/Corpo troca o gesto para Girar (a parte já arrastada é desfeita).
   - O ângulo segue o mouse em volta do pivô na tela (acumulado pelo menor caminho, sem saltos em ±180°). **Shift** no início = **torção** (gira em volta do eixo do próprio bone; arrastar na horizontal). Roda/`[ ]` mudam a janela; Esc/RMB cancela bit a bit; soltar sem girar não escreve nada; um passo de undo. Header: `Girar <bone> +30°` e a janela.
   - Escreve keys densas de rotação na janela da régua, com o falloff (`core/ephemeral.rotate`: peso 0 deixa a key idêntica).
-- **Trails no modo Corpo**: com as trails ligadas, os pontos da trail são agarráveis também no modo Corpo (o picking testa a régua, depois a trail, depois a malha); os gestos de trail são os mesmos do modo Trail.
+- ~~**Trails no modo Corpo**: com as trails ligadas, os pontos da trail são agarráveis também no modo Corpo~~ — revertido na 0.9.0 ([ADR 0015](../decisions/0015-pose-to-pose-keys.md)): cada modo só agarra o que é dele.
 - **Onion expandido**: um espaçamento por **personagem** (armature que deforma as malhas), medido na caixa de todas as malhas visíveis dele: malhas separadas do mesmo esqueleto (cabeça, tronco, pernas) andam juntas.
+
+## Fluxo do modo Corpo (0.9.0, depois do walk cycle do mantenedor)
+
+- **Sem clicar no esqueleto**: no modo Corpo os alvos de trail e onion não dependem da seleção (patch P12 do LMP): as malhas do personagem (o armature ativo, o que deforma o objeto ativo ou todos os que deformam malhas visíveis) recebem o onion, e a **parte do corpo tocada por último** mostra a trail (antes de tocar: os bones selecionados, como antes). Alvos fixados (`PINNED`) e o modo Trail seguem o LMP. No modo Corpo a trail é só para ver: para agarrá-la, use o modo Trail ([ADR 0015](../decisions/0015-pose-to-pose-keys.md)).
+- **Botão Animar** (painel N, quando não se está em Pose Mode no personagem): entra em Pose Mode no esqueleto que deforma o objeto ativo (mesmo escondido) e ativa a última ferramenta (Corpo na primeira vez). O toggle "Ligar Rigify" passou a se chamar **Esqueleto**.
+- **Começar do zero**: o primeiro gesto num personagem sem animação cria a Action (com slot); um clique sem arrasto, um Esc ou uma recusa a removem de novo.
+- **Corte no frame 0** (`Scene.asc_sculpt.clip_negative`, ligado; Parâmetros › "Cortar no frame 0"): a janela de um gesto nunca escreve keys antes do frame 0.
+- **Smooth no membro inteiro**: o pincel suaviza a cadeia `Membro` até a parte (braço inteiro no antebraço), porque o caminho do cotovelo depende do braço de cima.
+- **Smooth da trail** (padrão; barra da ferramenta e Parâmetros › Suavizar: **Trail** | Rotações): o caminho do ponto agarrado no mundo (a trail) é suavizado com o mesmo filtro gaussiano (falloff da régua × força) e o membro é resolvido em cada frame para o ponto seguir o caminho suavizado (rig efêmero com alvo por frame; a mão mantém a orientação no mundo, então o alvo é exato). Rotações = o Smooth anterior (curvas de rotação frame a frame). Controles que transladam (hips, IK do Rigify) usam sempre a suavização das curvas, que já é a trail deles. `ephemeral_edit.TrailSmoothEdit`. O ponto suavizado é o que a trail da tela segue (a ponta do bone da parte), e **a trail sendo suavizada é desenhada ao vivo** (amarela) durante o esfregar; ao soltar ela é a trail real (`scenario_trail_smooth.py`).
+- **Cotovelo/joelho sem saltos**: ver [ephemeral-rig](ephemeral-rig.md) ("Membro quase reto").
+
+## Pose a pose e modos separados (0.9.0, [ADR 0015](../decisions/0015-pose-to-pose-keys.md))
+
+- **Keys** (barra da ferramenta e Parâmetros): **Pose a pose** (padrão) ou **Densas**.
+  - **Pose a pose:** o arrasto no corpo muda a pose **do frame atual**, com uma key por canal. Sem key ali, ela é criada, como o auto-key.
+  - **Poses vizinhas:** as poses-chave do personagem dentro da janela da régua seguem o arrasto com falloff × **Influência nas poses** (padrão 25%; 0 = travadas). Nada mais muda.
+  - **Densas:** o comportamento da ADR 0011.
+- **I** (com a ferramenta ativa): grava a pose inteira do personagem no frame atual, sem selecionar bones (`asc.key_pose`).
+- **Modos separados**:
+  - **Corpo** agarra só o corpo, ou a ponta de um bone selecionado quando o toggle Esqueleto está ligado. As trails ficam só para ver.
+  - **Trail** agarra só os pontos da trail (grab, arco, Ctrl = timing).
+- **Qual trail editar no modo Trail** (relato de 2026-10-05: sem bones selecionados não havia trail para agarrar):
+  - **Clique no corpo:** só escolhe a parte cuja trail aparece. Não edita nada e não cria passo de undo. Depois é só arrastar a trail.
+  - **Seleção:** as trails dos bones selecionados também aparecem.
+  - **Toggle Todas** (painel N, ao lado de Trails): as trails de **todas** as partes do personagem, independente da seleção, todas editáveis no modo Trail. Um clique numa parte do corpo volta para a trail só dela.
+- **Limites do pose a pose:** os pinos (pés no Corpo) e o ponto da pele são exatos nas poses; entre elas vale a interpolação do Blender.
 
 ## Riscos e perguntas abertas
 
@@ -186,3 +212,4 @@ Pincel temporal:
 - **Rigify com nomes diferentes** (metarigs customizados): o mapa DEF → controle cobre o metarig Human; o resto cai no genérico, sobre os bones DEF (avisar no header).
 - **Preview no modo Corpo**: a pose ao vivo exige reavaliar o rig a cada mouse move (Rigify) — medir; se passar do orçamento, mostrar só a trail prevista durante o arrasto e a pose ao soltar.
 - **Unir os modos no futuro** (decisão 1): ex. Ctrl no modo Corpo = timing da parte agarrada.
+- **Eixos do Girar** (feedback de 2026-10-04): o mantenedor achou os eixos de rotação ruins e vai propor uma forma melhor — revisitar.

@@ -30,6 +30,7 @@ def _head_tail(rig, bone):
 
 
 def _gesture(rig, bone, frame, delta, **kw):
+    bpy.context.scene.asc_sculpt.key_mode = 'DENSE'      # these check the dense keys (ADR 0011)
     return bpy.ops.asc.sculpt_gesture('EXEC_DEFAULT', obj_name=rig.name, bone=bone, frame=frame,
                                       delta=delta, **kw)
 

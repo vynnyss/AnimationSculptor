@@ -26,6 +26,39 @@ def channelbag(ob, create=False):
     return anim_utils.action_get_channelbag_for_slot(adt.action, adt.action_slot)
 
 
+def ensure_action(ob) -> str:
+    """Start from zero: give the object a new Action, slot and channelbag when it has no Action. Returns the
+    new Action's name ('' when one was already assigned) — see ``drop_if_empty``."""
+    import bpy
+
+    adt = ob.animation_data_create()
+    if adt.action is not None:
+        if adt.action_slot is None and adt.action_suitable_slots:
+            adt.action_slot = adt.action_suitable_slots[0]
+        return ""
+    action = bpy.data.actions.new(f"{ob.name}Action")
+    slot = action.slots.new(id_type='OBJECT', name=ob.name)
+    adt.action = action
+    adt.action_slot = slot
+    anim_utils.action_ensure_channelbag_for_slot(action, slot)
+    return action.name
+
+
+def drop_if_empty(ob, action_name) -> None:
+    """Remove an Action made by ``ensure_action`` when the gesture wrote nothing into it (cancel, click)."""
+    import bpy
+
+    action = bpy.data.actions.get(action_name) if action_name else None
+    if action is None:
+        return
+    cb = channelbag(ob)
+    if cb is not None and len(cb.fcurves):
+        return
+    if ob.animation_data is not None and ob.animation_data.action == action:
+        ob.animation_data.action = None
+    bpy.data.actions.remove(action)
+
+
 def bone_fcurves(ob, pb) -> list:
     """Every F-Curve that animates the pose bone ``pb``."""
     cb = channelbag(ob)

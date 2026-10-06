@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — esqueleto primeiro + Girar em revisão (um PR)
+## Agora — fluxo do modo Corpo em revisão (um PR)
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -34,9 +34,11 @@
 16. **[mergeado — PR #18] Plano da reforma de UX** (só docs): [ADR 0013](decisions/0013-body-and-trail-interaction.md), [ADR 0012](decisions/0012-spacing-policy-preserve-path.md), [design/sculpt-ux.md](design/sculpt-ux.md).
 17. **[mergeado — PR #19, um PR só por pedido do mantenedor] Reforma de UX (0.7.0)**: UX-1 a UX-4 do plano — ferramentas na lateral, modos Corpo/Trail, agarrar o corpo (pele segue o cursor), pescoço/cabeça em duas etapas, Smooth, régua v2, onion normal/expandido, painel N limpo, Ligar Rigify; testes conferem a deformação da malha. *Resultado: unit 583, blender 186, ui 140.*
 
-18. **[em revisão — PR `feat/skeleton-sculpt`, um PR] Esqueleto primeiro + Girar (0.8.0)**, [ADR 0014](decisions/0014-skeleton-first.md): esqueleto simples com dedos para a malha da Vale (`dev.py basic-rig` → `Vale_new_Basic_rigged.blend`), gesto Girar (ferramenta + segurar R), trails agarráveis no modo Corpo, onion expandido por personagem. *Resultado: unit 586, blender 199, ui 169.*
+18. **[mergeado — PR #20] Esqueleto primeiro + Girar (0.8.0)**, [ADR 0014](decisions/0014-skeleton-first.md): esqueleto simples com dedos para a malha da Vale (`dev.py basic-rig` → `Vale_new_Basic_rigged.blend`), gesto Girar (ferramenta + segurar R), trails agarráveis no modo Corpo, onion expandido por personagem. *Resultado: unit 586, blender 199, ui 169.*
 
-> Estado dos PRs: #1–#11 e #13–#19 estão na `main`; esqueleto primeiro + Girar em revisão.
+19. **[em revisão — PR `feat/body-workflow`] Fluxo do modo Corpo (0.9.0)** (feedback do walk cycle): cotovelo/joelho sem saltos (dobradiça com o lado da pose de repouso no IK de 2 bones), Smooth no membro inteiro e Smooth da trail (padrão), começar sem Action, corte no frame 0, onion/trail sem selecionar o esqueleto (P12), botão Animar; **pose a pose** como padrão + I grava a pose + modos Corpo/Trail separados, clique no corpo escolhe a trail no modo Trail, toggle Todas ([ADR 0015](decisions/0015-pose-to-pose-keys.md)). *Resultado: unit 590, blender 212, ui 222.*
+
+> Estado dos PRs: #1–#11 e #13–#20 estão na `main`; o fluxo do modo Corpo está em revisão.
 
 ## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
 
@@ -57,6 +59,8 @@
 ## Depois
 
 - Escolher entre a ferramenta Girar e segurar R (mantenedor compara usando a 0.8.0).
+- **Eixos do Girar** (feedback de 2026-10-04): os eixos de rotação não estão bons; o mantenedor vai pensar numa forma melhor — revisitar.
+- Ferramentas também no Object Mode (animar com a malha ativa, sem Pose Mode) — hoje o botão Animar faz a ponte.
 - Rigify congelado (ADR 0014): IK/FK, snapping e bake voltam só se o mantenedor pedir.
 
 - Reinstalar o zip automaticamente para os testes do mantenedor (pedido de 2026-10-04, futuro).

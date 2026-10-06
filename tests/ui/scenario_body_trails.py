@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Trails shown in the Corpo (BODY) mode on the simple skeleton: a trail point wins over the body under it
-(hover + drag, one Ctrl+Z restores the Action), and away from the trails the body is still picked."""
+"""Body and trail tools are separated by the mode (decision of 2026-10-05) on the simple skeleton: in the
+Corpo mode the trails are only shown — the body under a trail point is what gets picked; in the Trail mode
+the trail point is picked and dragged (one Ctrl+Z restores the Action); back in Corpo the body is picked."""
 
 import os
 from pathlib import Path
@@ -97,9 +98,18 @@ def scenario(h):
     co = h.to_window(px)
     yield from body_ui.hover(h, co)
     hov = state.HOVER
-    h.check("hover is a trail hit (not a body hit)", hov is not None and not hov.on_body and hov.bone == BONE
+    h.check("Corpo mode: a trail point is never picked (the body or nothing)",
+            hov is None or hov.on_body, hov and (hov.bone, hov.frame, hov.on_body, hov.on_bone))
+    h.screenshot("1-hover-trail-body-mode")
+    bpy.context.scene.asc_sculpt.interaction_mode = 'TRAIL'
+    yield 0.3
+    trail = yield from _wait_trail(provider, rig_name, BONE)
+    yield from body_ui.hover(h, (co[0] + 6, co[1]))
+    yield from body_ui.hover(h, co)
+    hov = state.HOVER
+    h.check("Trail mode: the trail point is picked", hov is not None and not hov.on_body and hov.bone == BONE
             and hov.frame == FRAME, hov and (hov.bone, hov.frame, hov.on_body, hov.on_bone))
-    h.screenshot("1-hover-trail")
+    h.screenshot("1b-hover-trail-trail-mode")
 
     # --- 2) drag it ----------------------------------------------------------------------------------
     vals0, head0 = _values(rig_name), _head(rig_name)
@@ -124,7 +134,9 @@ def scenario(h):
             vals2 == vals0, _diff(vals0, vals2))
     h.check("... and the hand position", tuple(head2) == tuple(head0), (head0, head2))
 
-    # --- 3) the body away from any trail ---------------------------------------------------------------
+    # --- 3) back in Corpo: the body is picked ---------------------------------------------------------
+    bpy.context.scene.asc_sculpt.interaction_mode = 'BODY'
+    yield 0.3
     rig = bpy.data.objects[rig_name]
     mesh = next(o for o in bpy.data.objects if o.type == 'MESH' and o.visible_get() and o.name == "Vale_body")
     trail = provider.get_trail(rig, BONE)

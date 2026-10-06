@@ -16,6 +16,7 @@ import numpy as np
 from ..anim import action_io, spaces
 from ..anim.snapshot import Snapshot
 from ..core import bezier, dense, falloff, smooth
+from . import ephemeral_edit
 
 PAD = 1
 MAX_PASSES = 64         # a long stroke stops smoothing further (the cost of a pass stays bounded)
@@ -39,7 +40,7 @@ class SmoothEdit:
         self.trail_frames = np.empty(0)
         lo = self.frame - int(math.floor(self.radius_past)) - PAD
         hi = self.frame + int(math.floor(self.radius_future)) + PAD
-        self.frames = np.arange(lo, hi + 1)
+        self.frames = np.arange(ephemeral_edit.window_start(lo, self.frame), hi + 1)
         self.weights = falloff.weight_signed(self.frames.astype(np.float64) - self.frame, self.radius_past,
                                              self.radius_future, shape)
         self.snapshot = Snapshot(ob)
@@ -102,7 +103,7 @@ class SmoothEdit:
     def apply(self, _delta=None):
         self.apply_passes(self.passes)
 
-    def prefetch(self, frames):
+    def prefetch(self, frames, trail=None):
         pass
 
     def preview(self):

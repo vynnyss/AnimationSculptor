@@ -16,6 +16,9 @@ def _load_post(*_args):
     rig.clear_cache()
     body_pick.clear_cache()
     state.reset()
+    from ..trails import provider
+
+    provider.FOCUS.clear()          # the body part last touched belongs to the old file
 
 
 @persistent

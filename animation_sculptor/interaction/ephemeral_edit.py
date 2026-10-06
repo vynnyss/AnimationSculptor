@@ -16,13 +16,29 @@ import numpy as np
 
 from ..anim import action_io, spaces
 from ..anim.snapshot import Snapshot
-from ..core import dense, ephemeral, falloff
+from ..core import dense, ephemeral, falloff, pose_keys
 from ..core import kinematics as kin
 from ..core.fcurve_model import ChannelModel
 
 PIVOT_ITERATIONS = 3   # stage 1 of the aim (decision 10): fixed-point steps measured on the rig
 PAD = 1     # frames of weight 0 written on each side of the window (curves created by the gesture stay flat outside)
 BODY = "BODY"
+POSE, DENSE = "POSE", "DENSE"     # key modes (ADR 0015)
+
+
+def pose_frames(ob) -> list:
+    """The character's pose keys: every integer frame that holds a key on any channel of its Action."""
+    cb = action_io.channelbag(ob)
+    if cb is None:
+        return []
+    out = set()
+    for fc in cb.fcurves:
+        n = len(fc.keyframe_points)
+        if n:
+            co = np.empty(2 * n)
+            fc.keyframe_points.foreach_get("co", co)
+            out.update(int(round(x)) for x in co[0::2])
+    return sorted(out)
 
 
 def refusal(ob, bones) -> str:
@@ -38,6 +54,28 @@ def refusal(ob, bones) -> str:
         if reason:
             return reason
     return ""
+
+
+def window_start(lo, frame) -> int:
+    """First frame a gesture may write: ``lo``, cut at frame 0 by default (``Scene.asc_sculpt.clip_negative``;
+    a gesture grabbed before 0 keeps its own frame)."""
+    settings = getattr(bpy.context.scene, "asc_sculpt", None)
+    if settings is None or not settings.clip_negative:
+        return int(lo)
+    return int(max(lo, min(0, frame)))
+
+
+def rest_bend_sign(ob, bones) -> float:
+    """+1/−1: the side the chain's middle joint (elbow, knee) bends to about the middle bone's X axis, read
+    from the rest pose (rigs model a slight natural bend); +1 when the rest pose is straight or the chain
+    is shorter than two bones. Keeps the two-bone IK on one side at every frame (no elbow flips)."""
+    if len(bones) < 2:
+        return 1.0
+    a, b = ob.data.bones[bones[0]], ob.data.bones[bones[1]]
+    n = (a.tail_local - a.head_local).cross(b.tail_local - b.head_local)
+    if n.length < 1e-3 * a.length * b.length:
+        return 1.0
+    return 1.0 if n.dot(b.matrix_local.to_3x3().col[0]) >= 0.0 else -1.0
 
 
 def _face_frame(pts):
@@ -71,7 +109,11 @@ class ChainEdit:
 
     def __init__(self, ob, bones, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH",
                  orientation=ephemeral.WORLD, scope="LIMB", pins=(), point_world=None, point_bone=None,
-                 aim_bones=(), point_deform=None, point_skin=None):
+                 aim_bones=(), point_deform=None, point_skin=None, key_mode=DENSE, pose_influence=0.25):
+        # POSE: pose to pose (ADR 0015) — keys only at the posed frame and, × pose_influence, at the character's
+        # neighbouring pose keys in the window; DENSE: one key per frame of the window (ADR 0011)
+        self.key_mode = key_mode
+        self.pose_influence = float(pose_influence)
         """``point_world``: the grabbed spot on the body (world, at ``frame``), rigid with ``point_bone``
         (default: the chain's last bone); None = the last bone's tail. ``aim_bones`` (decision 10, e.g. Rigify
         ``neck, head``): the chain only leans; ``finish`` then measures the rig and (1) leans further until the
@@ -159,23 +201,27 @@ class ChainEdit:
     def window_frames(self):
         lo = self.frame - int(math.floor(self.radius_past)) - PAD
         hi = self.frame + int(math.floor(self.radius_future)) + PAD
+        lo = window_start(lo, self.frame)
+        if self.key_mode == POSE:     # the posed frame and the pose keys inside the window
+            return np.array(sorted({self.frame} | {f for f in self.pose_frames if lo <= f <= hi}), dtype=np.int64)
         return np.arange(lo, hi + 1)
 
-    @staticmethod
-    def _chain(data, base=None):
+    def _chain(self, data, bones, base=None):
         return ephemeral.Chain(data["base"] if base is None else base, data["links"], data["lengths"], data["loc"],
-                               data["rot"], data["modes"], data["scale"], data["locks"])
+                               data["rot"], data["modes"], data["scale"], data["locks"],
+                               bend_sign=rest_bend_sign(self.ob, bones))
 
     def _prepare(self):
         """Sample the chain (and pinned limbs) over the window from the *original* Action; keep the models."""
         scene = bpy.context.scene
+        self.pose_frames = pose_frames(self.ob)
         self.frames = self.window_frames()
         extra = [self.point_bone] if self.point_local is not None and self.point_bone != self.bone else []
         extra += [b for b in self.aim_bones if b not in extra]
         if self.deform_local is not None and self.point_deform not in extra:
             extra.append(self.point_deform)
         data = spaces.prefetch_chain(self.ob, self.bones, self.frames, scene, extra=extra)
-        self.chain = self._chain(data)
+        self.chain = self._chain(data, self.bones)
         world = self.chain.world()
         self.aim_origin = None
         if self.aim_bone and self.point_local is not None:
@@ -201,9 +247,11 @@ class ChainEdit:
         for j, limb in self.pins:
             data = spaces.prefetch_chain(self.ob, limb, self.frames, scene)
             rel = np.linalg.inv(world[:, j]) @ data["base"]
-            self.pin_data.append(ephemeral.Pin(parent=j, rel=rel, limb=self._chain(data)))
+            self.pin_data.append(ephemeral.Pin(parent=j, rel=rel, limb=self._chain(data, limb)))
         self.weights = falloff.weight_signed(self.frames.astype(np.float64) - self.frame, self.radius_past,
                                              self.radius_future, self.shape)
+        if self.key_mode == POSE:     # the other poses change only a little ("Influência nas poses")
+            self.weights = np.where(self.frames == self.frame, self.weights, self.weights * self.pose_influence)
         self.tip0 = self.chain.tip()
         cb = action_io.channelbag(self.ob)
         self.models = {}
@@ -213,7 +261,8 @@ class ChainEdit:
             fc = cb.fcurves.find(path, index=axis) if cb is not None else None
             model = action_io.read_channel(fc) if fc is not None else _empty_model()
             self.models[(name, axis)] = model
-            self.current[(name, axis)] = dense.current_values(model, int(self.frames[0]), len(self.frames))
+            if self.key_mode == DENSE:
+                self.current[(name, axis)] = dense.current_values(model, int(self.frames[0]), len(self.frames))
 
     def set_radii(self, radius_past, radius_future):
         """New window: back to the original curves, sample again, re-apply the current drag."""
@@ -241,22 +290,32 @@ class ChainEdit:
         self._write()
 
     def _write(self):
-        """Dense keys of every edited channel from ``self.result``."""
+        """Keys of every edited channel from ``self.result`` (dense or pose to pose)."""
         rotations = self._rotations()
-        start = int(self.frames[0])
         for name, channel, axis in self.channels:
             pb = self.ob.pose.bones[name]
             fc, _created = action_io.ensure_channel(self.ob, pb, channel, axis)
-            model = dense.write_dense(self.models[(name, axis)], start, rotations[name][:, axis],
-                                      default=getattr(pb, channel)[axis], current=self.current[(name, axis)])
+            model = self._keys(self.models[(name, axis)], rotations[name][:, axis], getattr(pb, channel)[axis],
+                               self.current.get((name, axis)))
             action_io.write_channel(fc, model)
         action_io.tag(self.ob)
 
-    def prefetch(self, frames):
-        """The trail of the dragged control (its tail) as cached when the gesture started."""
+    def _keys(self, model, values, default, current=None):
+        """The channel with ``values`` (one per window frame) written in the gesture's key mode; frames of
+        weight 0 are left alone."""
+        if self.key_mode == POSE:
+            on = self.weights > 0.0
+            return pose_keys.write_keys(model, self.frames[on], np.asarray(values)[on], default=default,
+                                        anchors=self.pose_frames)
+        return dense.write_dense(model, int(self.frames[0]), values, default=default, current=current)
+
+    def prefetch(self, frames, trail=None):
+        """The trail of the dragged control (its tail) as cached when the gesture started (``trail``: taken
+        before the window was sampled — the frame stepping can drop the engine's cache)."""
         from ..trails import provider
 
-        trail = provider.get_trail(self.ob, self.bone)
+        if trail is None:
+            trail = provider.get_trail(self.ob, self.bone)
         if trail is None or self.reason:
             return
         # only a trail of the tail matches the dragged point (a translation control's trail follows its head)
@@ -439,12 +498,11 @@ class ChainEdit:
             finally:
                 scene.frame_set(current, subframe=sub)
         cb = action_io.channelbag(ob)
-        start = int(self.frames[0])
         for axis in range(size):
             fc_old = cb.fcurves.find(pb.path_from_id(channel), index=axis) if cb is not None else None
             model = action_io.read_channel(fc_old) if fc_old is not None else _empty_model()
             fc, _created = action_io.ensure_channel(ob, pb, channel, axis)
-            action_io.write_channel(fc, dense.write_dense(model, start, new[:, axis], default=old[0, axis]))
+            action_io.write_channel(fc, self._keys(model, new[:, axis], old[0, axis]))
         action_io.tag(ob)
 
     def restore(self):
@@ -458,8 +516,10 @@ class RotateEdit(ChainEdit):
 
     kind = "ROTATE"
 
-    def __init__(self, ob, bone, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH", view_axis=(0.0, 0.0, 1.0)):
-        super().__init__(ob, [bone], frame, radius_past, radius_future, shape, scope="TIP")
+    def __init__(self, ob, bone, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH", view_axis=(0.0, 0.0, 1.0),
+                 key_mode=DENSE, pose_influence=0.25):
+        super().__init__(ob, [bone], frame, radius_past, radius_future, shape, scope="TIP", key_mode=key_mode,
+                         pose_influence=pose_influence)
         self.angle = 0.0
         self.twist = False
         self.view_axis = np.asarray(view_axis, dtype=np.float64)
@@ -477,6 +537,54 @@ class RotateEdit(ChainEdit):
     def apply(self, delta_world=None, target=None):
         """Re-apply the current turn (``set_radii`` calls this after sampling the new window)."""
         self.apply_rotation(self.angle, self.twist)
+
+    def finish(self):
+        pass
+
+
+class TrailSmoothEdit(ChainEdit):
+    """The Smooth brush on the trail (docs/design/sculpt-ux.md "Smooth da trail"): the grabbed point's world
+    path over the window is Gaussian-smoothed (``core.smooth``, falloff weights × strength) and the limb is
+    solved at every frame so the point follows the smoothed path (ephemeral rig, per-frame target). Same
+    interface as ``smooth_edit.SmoothEdit``: ``apply_passes(n)`` from the original path, incremental."""
+
+    kind = "SMOOTH"
+    MAX_PASSES = 64
+
+    def __init__(self, ob, bones, frame, radius_past=0.0, radius_future=0.0, shape="SMOOTH", strength=0.5,
+                 sigma=1.5, point_world=None, point_bone=None):
+        self.strength, self.sigma = float(strength), float(sigma)
+        self.passes = 0
+        # WORLD: the last bone keeps its world turn, so the two-bone IK lands the point on the path exactly
+        super().__init__(ob, bones, frame, radius_past, radius_future, shape, ephemeral.WORLD, scope="LIMB",
+                         key_mode=DENSE,
+                         point_world=point_world, point_bone=point_bone)
+
+    def _prepare(self):
+        super()._prepare()
+        self.path0 = self.chain.tip()
+        self._path = self.path0.copy()
+        self._done = 0
+
+    def apply_passes(self, passes):
+        from ..core import smooth
+
+        passes = max(0, min(int(passes), self.MAX_PASSES))
+        if passes < self._done:
+            self._path, self._done = self.path0.copy(), 0
+        for _ in range(passes - self._done):
+            self._path = smooth.smooth_pass(self._path, self.weights, self.strength, self.sigma)
+        self._done = self.passes = passes
+        if passes == 0:
+            self.result = None
+            self.restore()
+            return
+        self.result = ephemeral.sculpt(self.chain, self.weights, np.zeros(3), self.orientation,
+                                       solver=self.solver, target=self._path)
+        self._write()
+
+    def apply(self, delta_world=None, target=None):
+        self.apply_passes(self.passes)
 
     def finish(self):
         pass

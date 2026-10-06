@@ -1,6 +1,6 @@
 # 0011 — FK por rig efêmero (solve em `core/`) com keys densas na janela de tempo
 
-- Status: aceito (2026-10-04: o mantenedor decidiu implementar o rig efêmero logo depois da UI de tempo, antes do Escopo 2)
+- Status: aceito (2026-10-04: o mantenedor decidiu implementar o rig efêmero logo depois da UI de tempo, antes do Escopo 2); **substituído em parte por [0015](0015-pose-to-pose-keys.md)** (2026-10-05: pose a pose é o padrão; as keys densas viram opção)
 - Data: 2026-10-04
 
 ## Contexto e problema

@@ -27,6 +27,7 @@ def scenario(h):
     s.radius_linked = False
     s.radius_past, s.radius_future = 4.0, 4.0
     s.interaction_mode = 'BODY'
+    s.key_mode = 'DENSE'      # this scenario checks dense keys (ADR 0011)
     s.show_rig = False
     with h.override():
         bpy.ops.wm.tool_set_by_id(name="animation_sculptor.sculpt")

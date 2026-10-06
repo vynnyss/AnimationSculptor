@@ -226,12 +226,13 @@ class _ArcEdit(_EditBase):
 
 
 class ASC_OT_sculpt_gesture(bpy.types.Operator):
-    """Sculpt the motion trail: drag a key point (grab, soft with the wheel) or an in-between (arc)"""
+    """Esculpir a animação: arraste uma parte do corpo (modo Corpo) ou um ponto da trail (modo Trail)"""
     bl_idname = "asc.sculpt_gesture"
     bl_label = "Animation Sculptor"
     # UNDO without REGISTER: one undo step per gesture, no "Adjust Last Operation" panel (a redo would re-run
     # execute() without the drag, the grabbed point or the Smooth passes of the interactive gesture)
     bl_options = {'UNDO'}
+    new_action = ""     # Action made by this gesture (start from zero); dropped again when nothing was written
 
     # parametric form (tests, redo): same edit as the mouse gesture
     obj_name: StringProperty(options={'SKIP_SAVE'})
@@ -341,11 +342,29 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
     def _grab_point(self):
         return Vector(self.point) if self.use_point else getattr(self, "_point", None)
 
-    def _begin_smooth(self, ob, obj_name, bones, frame, radii):
+    def _begin_smooth(self, ob, obj_name, bones, frame, radii, point=None):
         settings = _settings()
         for name in bones:
             if ob.pose.bones.get(name) is None:
                 return "controle não encontrado"
+        part = bones[-1]
+        info = rig.get_adapter(ob).classify(ob, part)
+        if (settings is None or settings.smooth_mode == 'TRAIL') and info is not None and info.rotates                 and not info.translates and not ephemeral_edit.refusal(ob, bones):
+            # smooth the trail itself: the part's world path, the limb solved to follow it. A translating
+            # control's location curve already is its trail (the rotation branch below smooths it)
+            if bpy.context.scene.frame_current != frame:
+                bpy.context.scene.frame_set(frame)
+            # the point is the one the trail on screen follows (the part's tail), so the trail itself is what
+            # gets smoothed — and it can be drawn live over the cached one
+            point = ob.matrix_world @ ob.pose.bones[part].tail
+            self.edit = ephemeral_edit.TrailSmoothEdit(
+                ob, bones, frame, radii[0], radii[1], settings.falloff if settings is not None else "SMOOTH",
+                settings.smooth_strength if settings is not None else 0.5,
+                settings.smooth_sigma if settings is not None else 1.5,
+                point_world=tuple(point), point_bone=part)
+            if self.edit.editable:
+                self.obj_name, self.bone, self.frame = obj_name, part, frame
+                return ""
         self.edit = smooth_edit.SmoothEdit(ob, bones, frame, radii[0], radii[1],
                                            settings.falloff if settings is not None else "SMOOTH",
                                            settings.smooth_strength if settings is not None else 0.5,
@@ -382,7 +401,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                                              scope=scope, pins=pins, point_world=point,
                                              point_bone=bone if point is not None else None, aim_bones=aim,
                                              point_deform=getattr(self, "_deform", None),
-                                             point_skin=getattr(self, "_skin", None))
+                                             point_skin=getattr(self, "_skin", None), **_key_mode())
         state.STATS["prefetch_ms"] = (time.perf_counter() - t0) * 1000.0
         if self.edit.reason:
             return self.edit.reason
@@ -411,7 +430,9 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
                 return {'CANCELLED'}
             radii = (self.radius if self.radius_past < 0 else self.radius_past,
                      self.radius if self.radius_future < 0 else self.radius_future)
-            reason = self._begin_smooth(ob, self.obj_name, [self.bone], self.frame, radii)
+            bones, why = rig.get_adapter(ob).ephemeral_chain(ob, self.bone, "LIMB")
+            reason = self._begin_smooth(ob, self.obj_name, bones if bones and not why else [self.bone], self.frame,
+                                        radii, point=Vector(self.point) if self.use_point else None)
             if reason:
                 self.report({'WARNING'}, f"Animation Sculptor: {reason}")
                 return {'CANCELLED'}
@@ -462,6 +483,20 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             state.LAST_TOOL = tool
         settings = _settings()
         radii = (settings.radius_past, settings.radius_future) if settings is not None else (0.0, 0.0)
+        ob = bpy.data.objects.get(hit.obj_name)
+        if hit.on_body and settings is not None and settings.interaction_mode == 'TRAIL':
+            # Trail mode: a click on the body only picks the part whose trail is shown and edited
+            if ob is not None:
+                provider.focus_part(ob, hit.bone)
+                if settings.trail_all:
+                    settings.trail_all = False      # from the overview to this part's trail (toggle back: all)
+                state.MESSAGE = f"trail de {hit.bone}"
+            return {'CANCELLED'}
+        if hit.on_body and ob is not None:
+            provider.focus_part(ob, hit.bone)          # the Corpo mode shows the trail of the part touched
+            if tool != TOOL_SMOOTH:
+                # start from zero: the first gesture on a character without animation makes its Action
+                self.new_action = action_io.ensure_action(ob)
         if tool == TOOL_SMOOTH:
             return self._invoke_smooth(context, event, hit, radii)
         if tool == TOOL_ROTATE or state.ROTATE_HELD:
@@ -520,7 +555,7 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         toward_viewer = Vector(axis)
         self.edit = ephemeral_edit.RotateEdit(ob, bone, frame, radii[0], radii[1],
                                               settings.falloff if settings is not None else "SMOOTH",
-                                              view_axis=tuple(toward_viewer))
+                                              view_axis=tuple(toward_viewer), **_key_mode())
         if not self.edit.editable:
             return self.edit.reason or "sem canais de rotação"
         self.obj_name, self.bone, self.frame = ob.name, bone, frame
@@ -645,9 +680,16 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             return {'CANCELLED'}
         if context.scene.frame_current != hit.frame:
             context.scene.frame_set(hit.frame)
-        reason = self._begin_smooth(ob, hit.obj_name, [hit.bone], hit.frame, radii)
+        # the whole limb up to the part (an elbow's path depends on the upper arm too); one bone when the
+        # adapter has no limb there (Rigify IK…)
+        bones, why = rig.get_adapter(ob).ephemeral_chain(ob, hit.bone, "LIMB")
+        if why or not bones:
+            bones = [hit.bone]
+        trail = provider.get_trail(ob, bones[-1])     # before the window is sampled (it can drop the cache)
+        reason = self._begin_smooth(ob, hit.obj_name, bones, hit.frame, radii, point=Vector(hit.world))
         if reason:
             return self._refuse(context, hit, reason)
+        self.edit.prefetch([], trail=trail)     # the cached trail: the live preview splices the smoothed part in
         self.origin = Vector(hit.world)
         self.last_mouse = (event.mouse_region_x, event.mouse_region_y)
         self.accum = Vector((0.0, 0.0, 0.0))
@@ -670,7 +712,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         passes = smooth.passes_for_drag(self.stroke)
         if passes != self.edit.passes:
             self.edit.apply_passes(passes)
-            state.GESTURE["label"] = f"smooth ×{passes}"
+            state.GESTURE["label"] = f"smooth ×{self.edit.passes}"       # capped at MAX_PASSES
+            state.GESTURE["preview"] = self.edit.preview() or None     # the trail being smoothed, live
         self._header(context)
         context.area.tag_redraw()
 
@@ -736,6 +779,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
         context.area.tag_redraw()
 
     def _refuse(self, context, hit, reason):
+        if self.new_action:
+            ob = bpy.data.objects.get(hit.obj_name)
+            if ob is not None:
+                action_io.drop_if_empty(ob, self.new_action)
         state.MESSAGE = reason
         state.REFUSAL = {"world": hit.world, "frame": hit.frame, "bone": hit.bone, "reason": reason}
         if context.area is not None:
@@ -808,7 +855,8 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
             pinned = f" · pés presos: {len(e.pins)}" if e.pins else ""
             name = "Corpo" if e.scope == rig.BODY else "Cadeia FK"
             head = (f"{name} {' → '.join(e.bones)}{pinned} @ {self.frame}   {delta}   janela {span} "
-                    f"(←{e.radius_past:g} · {e.radius_future:g}→) · keys em todo frame · roda/[ ]: raio")
+                    f"(←{e.radius_past:g} · {e.radius_future:g}→) · "
+                    f"{'keys em todo frame' if e.key_mode == ephemeral_edit.DENSE else 'pose a pose'} · roda/[ ]: raio")
             if e.result is not None and not e.result.reached[e.frames == self.frame].all():
                 head += " · fora de alcance"
             if e.result is not None and e.result.pins_reached is not None and not e.result.pins_reached.all():
@@ -935,6 +983,10 @@ class ASC_OT_sculpt_gesture(bpy.types.Operator):
 
     def _end(self, context, cancel):
         state.GESTURE = None
+        if cancel and self.new_action:
+            ob = bpy.data.objects.get(self.obj_name)
+            if ob is not None:
+                action_io.drop_if_empty(ob, self.new_action)
         context.area.header_text_set(None)
         context.area.tag_redraw()
         # cancel restored the F-Curves bit for bit: the cached trail is still the truth. Timing gestures
@@ -1041,6 +1093,14 @@ class ASC_OT_time_window(bpy.types.Operator):
         context.area.tag_redraw()
 
 
+def _key_mode():
+    """The gesture's key mode from the scene (ADR 0015): pose to pose (default) or dense."""
+    settings = _settings()
+    if settings is None:
+        return {"key_mode": ephemeral_edit.POSE, "pose_influence": 0.25}
+    return {"key_mode": settings.key_mode, "pose_influence": settings.pose_influence}
+
+
 def _draw_settings(context, layout, tool):
     """Tool settings bar (top of the viewport, View › Tool Settings): the gesture window."""
     s = props.get(context)
@@ -1052,8 +1112,13 @@ def _draw_settings(context, layout, tool):
     row.prop(s, "radius_future", text="Futuro")
     layout.prop(s, "falloff", text="")
     if tool is not None and tool.idname == TOOL_SMOOTH:
+        layout.prop(s, "smooth_mode", text="")
         layout.prop(s, "smooth_strength", text="Força")
-    elif tool is not None and tool.idname in (TOOL_ID, TOOL_BODY):
+    else:
+        layout.prop(s, "key_mode", text="")
+        if s.key_mode == 'POSE':
+            layout.prop(s, "pose_influence", text="Poses")
+    if tool is not None and tool.idname in (TOOL_ID, TOOL_BODY):
         layout.prop(s, "tip_orientation", text="")
 
 
@@ -1069,6 +1134,7 @@ class _SculptTool:
         ("view3d.select", {"type": 'LEFTMOUSE', "value": 'CLICK', "shift": True}, {"properties": [("toggle", True)]}),
         ("view3d.select_box", {"type": 'LEFTMOUSE', "value": 'CLICK_DRAG'}, None),
         ("asc.rotate_hold", {"type": 'R', "value": 'PRESS'}, None),      # hold R + drag: turn the part
+        ("asc.key_pose", {"type": 'I', "value": 'PRESS'}, None),         # I: key the whole pose (ADR 0015)
     )
     draw_settings = staticmethod(_draw_settings)
 
@@ -1076,8 +1142,8 @@ class _SculptTool:
 class ASC_WT_tip(_SculptTool, bpy.types.WorkSpaceTool):
     bl_idname = TOOL_TIP
     bl_label = "Ponta"
-    bl_description = ("Arraste uma parte do corpo: só aquela parte gira para seguir o mouse (keys em todo frame "
-                      "da janela da régua). Num membro em IK, move o controle IK")
+    bl_description = ("Arraste uma parte do corpo: só aquela parte gira para seguir o mouse (pose a pose, ou keys "
+                      "densas na janela da régua). Num membro em IK, move o controle IK. I: gravar a pose")
     bl_icon = "ops.pose.relax"
 
 
@@ -1151,7 +1217,68 @@ class ASC_OT_activate_tool(bpy.types.Operator):
         return bpy.ops.wm.tool_set_by_id(name=tool)
 
 
-classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool, ASC_OT_rotate_hold)
+class ASC_OT_key_pose(bpy.types.Operator):
+    """Grava a pose do personagem inteiro neste frame (uma pose-chave), sem precisar selecionar bones"""
+    bl_idname = "asc.key_pose"
+    bl_label = "Gravar pose"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.active_object
+        return ob is not None and ob.type == 'ARMATURE'
+
+    def execute(self, context):
+        ob = context.active_object
+        frame = context.scene.frame_current
+        count = 0
+        for info in rig.get_adapter(ob).controls(ob):
+            pb = ob.pose.bones[info.name]
+            channel, _size = spaces.rotation_channel(pb)
+            if info.rotates:
+                count += bool(pb.keyframe_insert(channel, frame=frame, group=pb.name))
+            if info.translates:
+                count += bool(pb.keyframe_insert("location", frame=frame, group=pb.name))
+        action_io.tag(ob)
+        self.report({'INFO'}, f"Animation Sculptor: pose gravada no frame {frame} ({count} canais)")
+        return {'FINISHED'}
+
+
+class ASC_OT_animate(bpy.types.Operator):
+    """Animar o personagem: entra em Pose Mode no esqueleto que deforma o objeto ativo (ou o único da cena)
+    e ativa a ferramenta, sem precisar clicar no esqueleto"""
+    bl_idname = "asc.animate"
+    bl_label = "Animar"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @staticmethod
+    def character(context):
+        arms = provider.body_characters(context.view_layer)
+        return arms[0] if len(arms) == 1 or (arms and context.active_object in arms) else None
+
+    @classmethod
+    def poll(cls, context):
+        return context.area is not None and context.area.type == 'VIEW_3D' and cls.character(context) is not None
+
+    def execute(self, context):
+        arm = self.character(context)
+        if context.mode != 'OBJECT' and context.active_object is not None and context.active_object != arm:
+            bpy.ops.object.mode_set(mode='OBJECT')
+        arm.hide_set(False)                     # Pose Mode needs the object; the bones stay hidden (toggle)
+        arm.hide_viewport = False
+        for ob in context.selected_objects:
+            ob.select_set(False)
+        arm.select_set(True)
+        context.view_layer.objects.active = arm
+        if arm.mode != 'POSE':
+            bpy.ops.object.mode_set(mode='POSE')
+        tool = state.LAST_TOOL if state.LAST_TOOL in TOOL_IDS else TOOL_BODY
+        bpy.ops.wm.tool_set_by_id(name=tool)
+        return {'FINISHED'}
+
+
+classes = (ASC_OT_sculpt_gesture, ASC_OT_time_window, ASC_OT_activate_tool, ASC_OT_rotate_hold, ASC_OT_animate,
+           ASC_OT_key_pose)
 TOOL_HOTKEY = {"type": 'K', "value": 'PRESS', "shift": True, "alt": True}   # free in the default keymap (5.2)
 _keymaps = []
 
