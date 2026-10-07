@@ -2,7 +2,7 @@
 
 > Backlog operacional orientado a resultado. Não é arquitetura. Atualizar ao fim de cada sessão significativa. Itens grandes; detalhe técnico mora em `design/`.
 
-## Agora — fluxo do modo Corpo em revisão (um PR)
+## Agora — auditoria ferramentas × Rigify em revisão (só docs)
 
 1. ~~Esqueleto do repositório~~ — mergeado (PR #2).
 2. **[mergeado — PR #3] Assets de teste reproduzíveis**: `scripts/make_test_assets.py` (`dev.py assets`) gera `tests/assets/local/attack_test.blend` a partir do personagem Rigify local do usuário (fora do repo público), com Action `asc_test_attack` em key poses literais; testes de Blender que pulam sem o asset. *Resultado: animação de ataque determinística para trails/sculpt, sem tocar no arquivo do usuário.*
@@ -36,9 +36,11 @@
 
 18. **[mergeado — PR #20] Esqueleto primeiro + Girar (0.8.0)**, [ADR 0014](decisions/0014-skeleton-first.md): esqueleto simples com dedos para a malha da Vale (`dev.py basic-rig` → `Vale_new_Basic_rigged.blend`), gesto Girar (ferramenta + segurar R), trails agarráveis no modo Corpo, onion expandido por personagem. *Resultado: unit 586, blender 199, ui 169.*
 
-19. **[em revisão — PR `feat/body-workflow`] Fluxo do modo Corpo (0.9.0)** (feedback do walk cycle): cotovelo/joelho sem saltos (dobradiça com o lado da pose de repouso no IK de 2 bones), Smooth no membro inteiro e Smooth da trail (padrão), começar sem Action, corte no frame 0, onion/trail sem selecionar o esqueleto (P12), botão Animar; **pose a pose** como padrão + I grava a pose + modos Corpo/Trail separados, clique no corpo escolhe a trail no modo Trail, toggle Todas ([ADR 0015](decisions/0015-pose-to-pose-keys.md)). *Resultado: unit 590, blender 212, ui 222.*
+19. **[mergeado — PR #21] Fluxo do modo Corpo (0.9.0)** (feedback do walk cycle): cotovelo/joelho sem saltos (dobradiça com o lado da pose de repouso no IK de 2 bones), Smooth no membro inteiro e Smooth da trail (padrão), começar sem Action, corte no frame 0, onion/trail sem selecionar o esqueleto (P12), botão Animar; **pose a pose** como padrão + I grava a pose + modos Corpo/Trail separados, clique no corpo escolhe a trail no modo Trail, toggle Todas ([ADR 0015](decisions/0015-pose-to-pose-keys.md)). *Resultado: unit 590, blender 212, ui 222.*
 
-> Estado dos PRs: #1–#11 e #13–#20 estão na `main`; o fluxo do modo Corpo está em revisão.
+20. **[em revisão — PR `docs/rig-independence-audit`, só docs] Auditoria ferramentas × Rigify**: [design/rig-independence-audit.md](design/rig-independence-audit.md). A dependência do Rigify já está confinada a `rig/`; sobra o tipo `IK` decidindo o caminho da ferramenta e o `ik_fk_state` na interface base. Grab/Soft Grab no corpo, Smooth da trail e Girar já seguem o modelo efêmero. Lacunas: Breakdown/Push/Relax por parte do corpo e escopo de tempo por parte. Arc em cadeias de rotação precisa de decisão (Tangent-Space). *Resultado: plano em 5 PRs, aguardando o mantenedor.*
+
+> Estado dos PRs: #1–#11 e #13–#21 estão na `main`; a auditoria ferramentas × Rigify está em revisão.
 
 ## Próximo — rig efêmero (decisão do mantenedor, 2026-10-04) e fechar o Escopo 1
 

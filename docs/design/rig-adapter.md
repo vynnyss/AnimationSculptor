@@ -125,3 +125,7 @@ No Rigify, `ephemeral_chain` vem do mapa de conceitos (FK `upper_arm → forearm
 ## Testes
 
 `tests/unit/test_rig.py` (11, com armatures falsos, sem Blender): Rigify detectado sobre o genérico, genérico para armature simples, confiança baixa sem `root`/`torso`, ida e volta conceito ⇄ bone, não controles nunca editados, capacidades pelos locks, `IK_FK` e cadeias, `deform_bones`, cache por armature, cadeias FK só de rotação mesmo com `location` livre, bone conectado nunca transla. `tests/blender/test_rig_adapter.py` (4): adapter Rigify no rig gerado (CI) e no personagem (local), genérico em armature simples, recusas do gesto (FK e MCH). Ver [blender-tests](../testing/blender-tests.md).
+
+## Auditoria
+
+O que ainda vaza do Rigify para as ferramentas (o tipo `IK`, `ik_fk_state` na base) e o plano para tirar: [rig-independence-audit.md](rig-independence-audit.md).
